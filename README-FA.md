@@ -92,7 +92,7 @@
 
 ساخته‌شده توسط **[Phraser](https://github.com/real-Phraser)**
 
-تشکر ویژه از **[Genie](https://github.com/actually-genius)** و **[Ari](https://github.com/itsarian)**
+سپاس بیکران از **[Genie](https://github.com/actually-genius)** و **[Ari](https://github.com/itsarian)**
 
 [![Telegram](https://img.shields.io/badge/Telegram-@theCodePhraser-2CA5E0?style=flat-square&logo=telegram)](https://t.me/theCodePhraser)
 [![GitHub](https://img.shields.io/badge/GitHub-real--Phraser-181717?style=flat-square&logo=github)](https://github.com/real-Phraser)
