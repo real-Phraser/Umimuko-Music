@@ -49,7 +49,7 @@
 |:---:|:---:|
 | ![Home](docs/home-dark.png) | ![Now Playing](docs/now-playing.png) |
 
-| Queue | Mini Player |
+| Queue | Mini Player/Light Mode |
 |:---:|:---:|
 | ![Queue](docs/queue.png) | ![Mini Player](docs/mini-player.png) |
 
