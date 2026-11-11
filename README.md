@@ -1,3 +1,6 @@
+<a href="README.fa.md">
+  <img src="https://flagcdn.com/w40/ir.png" alt="فارسی" height="20"/>
+</a>
 <div align="center">
 
 <img src="docs/logo.png" width="96" alt="Umimuko Music logo"/>
