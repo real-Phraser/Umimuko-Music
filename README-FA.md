@@ -4,8 +4,6 @@
 
 </div>
 
----
-
 <div align="center">
 
 <img src="docs/logo.png" width="96" alt="لوگوی Umimuko Music"/>
