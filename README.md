@@ -1,3 +1,4 @@
+[Uploading README.md…]()
 <div align="center">
 
 <img src="docs/logo.png" width="96" alt="Umimuko Music logo"/>
@@ -6,40 +7,30 @@
 
 **A clean, offline-first music player for Windows — no streaming, no accounts, just your music.**
 
-پلیر موسیقی تمیز و آفلاین برای ویندوز، بدون استریمینگ، بدون اکانت، فقط موسیقی شما.
-
 [![Release](https://img.shields.io/github/v/release/real-Phraser/umimuko-music?style=flat-square&color=e05c5c)](https://github.com/real-Phraser/umimuko-music/releases)
 [![Windows](https://img.shields.io/badge/Windows-10%2B-0078d4?style=flat-square&logo=windows)](https://github.com/real-Phraser/umimuko-music/releases)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2-7f52ff?style=flat-square&logo=kotlin)](https://kotlinlang.org)
 [![License](https://img.shields.io/github/license/real-Phraser/umimuko-music?style=flat-square)](LICENSE)
 
----
-
-<!-- Replace with your screenshots -->
-![Home screen in dark mode](docs/home-dark.png)
-
 </div>
 
 ---
 
-## ✨ Features / ویژگی‌ها
+## ✨ Features
 
-| | English | فارسی |
-|---|---|---|
-| 🎵 | Plays MP3, FLAC, AAC, OGG, WAV and more | پشتیبانی از فرمت‌های صوتی مختلف |
-| 📁 | Organizes by Albums, Artists, Playlists and Folders | سازمان‌دهی بر اساس آلبوم، هنرمند، پلی‌لیست و پوشه |
-| 🏠 | Home with Pinned, Recently played and Recently added shelves | صفحه‌ی خانه با قفسه‌های پین‌شده، اخیراً پخش‌شده و اخیراً اضافه‌شده |
-| 🎬 | Full-screen now playing with fade transition | صفحه‌ی فول‌اسکرین با انتقال fade |
-| 🪟 | Floating mini player that stays on top | مینی‌پلیر شناور روی همه‌ی پنجره‌ها |
-| 🌙 | Dark and Light mode | دارک و لایت مود  |
-| 🎨 | Album color accent that follows the cover art | رنگ پویا از روی کاور آلبوم |
-| 📋 | Playback queue with drag-to-reorder and multi-select | صف پخش با قابلیت کشیدن و انتخاب چندتایی |
-| ❤️ | Liked songs, playlists, search, shuffle and repeat | آهنگ‌های موردعلاقه، پلی‌لیست، جستجو، شافل و ریپیت |
+- 🎵 Plays MP3, FLAC, AAC, OGG, WAV and more
+- 📁 Organizes by Albums, Artists, Playlists and Folders
+- 🏠 Home with Pinned, Recently played and Recently added shelves
+- 🎬 Full-screen now playing with fade transition
+- 🪟 Floating mini player that stays on top
+- 🌙 Dark and Light mode
+- 🎨 Album color accent that follows the cover art
+- 📋 Playback queue with drag-to-reorder and multi-select
+- ❤️ Liked songs, playlists, search, shuffle and repeat
 
 ---
 
-## 📸 Screenshots / اسکرین‌شات‌ها
-
+## 📸 Screenshots
 
 <div align="center">
 
@@ -47,7 +38,7 @@
 |:---:|:---:|
 | ![Home](docs/home-dark.png) | ![Now Playing](docs/now-playing.png) |
 
-| Queue | Mini Player/Light Mode |
+| Queue | Mini Player / Light Mode |
 |:---:|:---:|
 | ![Queue](docs/queue.png) | ![Mini Player](docs/mini-player.png) |
 
@@ -55,39 +46,29 @@
 
 ---
 
-## 🛒 Download / دانلود
+## 🛒 Download
 
-Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** page and download one of:
+Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** page and download the latest `.msi` installer.
 
-به صفحه‌ی **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** برو و یکی از موارد زیر رو دانلود کن:
-
-| Package | Description |
-|---|---|
-| `Umimuko-Music.msi` | MSI installer for Windows / نصب‌کننده‌ی ویندوز |
-
-**System requirements / پیش‌نیازها :** Windows 10 x64 or later / ویندوز ۱۰ به بالا
+**System requirements:** Windows 10 x64 or later
 
 ---
 
-## 🛠️ Build from source / ساخت از سورس
+## 🛠️ Build from source
+
+JDK 17 x64 is required.
 
 ```bash
-# Windows — JDK 17 x64 required / نیاز به JDK 17 x64
-
 # Run directly
 .\gradlew.bat run
 
-# Build portable ZIP
-.\gradlew.bat createDistributable
-
 # Build installer (.exe / .msi)
 .\gradlew.bat packageDistributionForCurrentOS
-# or double-click BUILD-INSTALLERS.cmd
 ```
 
 ---
 
-## 🔧 Built with / ساخته‌شده با
+## 🔧 Built with
 
 - [Kotlin 2.2](https://kotlinlang.org) + [Compose Desktop 1.9](https://www.jetbrains.com/lp/compose-multiplatform/)
 - [Material 3](https://m3.material.io/) design system
@@ -96,7 +77,7 @@ Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)**
 
 ---
 
-## 📄 License / لایسنس
+## 📄 License
 
 This project is licensed under the terms of the [LICENSE](LICENSE) file.
 
