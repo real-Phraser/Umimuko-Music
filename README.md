@@ -40,8 +40,6 @@
 
 ## 📸 Screenshots / اسکرین‌شات‌ها
 
-> **Replace these placeholders with your own screenshots.**
-> برای بهترین نتیجه اسکرین‌شات‌های زیر رو با عکس‌های واقعی جایگزین کن.
 
 <div align="center">
 
