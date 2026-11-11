@@ -55,7 +55,7 @@
 
 ---
 
-## 🚀 Download / دانلود
+## 🛒 Download / دانلود
 
 Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** page and download one of:
 
