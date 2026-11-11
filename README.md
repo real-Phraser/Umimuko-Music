@@ -106,7 +106,7 @@ This project is licensed under the terms of the [LICENSE](LICENSE) file.
 
 Made by **[Phraser](https://github.com/real-Phraser)**
 
-Special thanks to **[Genie](https://github.com/actually-genius)**
+Special thanks to **[Genie](https://github.com/actually-genius)** & **[Ari](https://github.com/itsarian)**
 
 [![Telegram](https://img.shields.io/badge/Telegram-@theCodePhraser-2CA5E0?style=flat-square&logo=telegram)](https://t.me/theCodePhraser)
 [![GitHub](https://img.shields.io/badge/GitHub-real--Phraser-181717?style=flat-square&logo=github)](https://github.com/real-Phraser)
