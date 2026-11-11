@@ -31,9 +31,8 @@
 | 🏠 | Home with Pinned, Recently played and Recently added shelves | صفحه‌ی خانه با قفسه‌های پین‌شده، اخیراً پخش‌شده و اخیراً اضافه‌شده |
 | 🎬 | Full-screen now playing with fade transition | صفحه‌ی فول‌اسکرین با انتقال fade |
 | 🪟 | Floating mini player that stays on top | مینی‌پلیر شناور روی همه‌ی پنجره‌ها |
-| 🌙 | Dark and Light mode (remembered between sessions) | دارک و لایت مود با ذخیره‌ی آخرین انتخاب |
-| 🎨 | Album color accent that follows the cover art | رنگ accent پویا از روی کاور آلبوم |
-| 🎞️ | Startup animation with logo build and now-playing moment | انیمیشن اوپنینگ با معرفی آهنگ در حال پخش |
+| 🌙 | Dark and Light mode | دارک و لایت مود  |
+| 🎨 | Album color accent that follows the cover art | رنگ پویا از روی کاور آلبوم |
 | 📋 | Playback queue with drag-to-reorder and multi-select | صف پخش با قابلیت کشیدن و انتخاب چندتایی |
 | ❤️ | Liked songs, playlists, search, shuffle and repeat | آهنگ‌های موردعلاقه، پلی‌لیست، جستجو، شافل و ریپیت |
 
