@@ -1,4 +1,3 @@
-[Uploading README.md…]()
 <div align="center">
 
 <img src="docs/logo.png" width="96" alt="Umimuko Music logo"/>
