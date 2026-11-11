@@ -16,7 +16,7 @@
 ---
 
 <!-- Replace with your screenshots -->
-![Home screen in dark mode](docs/screenshots/home-dark.png)
+![Home screen in dark mode](docs/home-dark.png)
 
 </div>
 
@@ -47,11 +47,11 @@
 
 | Home | Now Playing |
 |:---:|:---:|
-| ![Home](docs/screenshots/home-dark.png) | ![Now Playing](docs/screenshots/now-playing.png) |
+| ![Home](docs/home-dark.png) | ![Now Playing](docs/now-playing.png) |
 
 | Queue | Mini Player |
 |:---:|:---:|
-| ![Queue](docs/screenshots/queue.png) | ![Mini Player](docs/screenshots/mini-player.png) |
+| ![Queue](docs/queue.png) | ![Mini Player](docs/mini-player.png) |
 
 </div>
 
