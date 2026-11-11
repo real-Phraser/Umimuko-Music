@@ -1,6 +1,9 @@
-<a href="README.fa.md">
-  <img src="https://flagcdn.com/w40/ir.png" alt="فارسی" height="20" style="border-radius:3px"/>
-</a>
+<div align="left">
+
+[🇮🇷 نسخه فارسی](README.fa.md)
+
+</div>
+
 
 <div align="center">
 
