@@ -1,6 +1,6 @@
 <div align="left">
 
-[🇮🇷 نسخه فارسی](README.fa.md)
+[🇮🇷 نسخه فارسی](README-FA.md)
 
 </div>
 
