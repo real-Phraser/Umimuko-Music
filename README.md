@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/34668959/README.md)
 <div align="center">
 
 <img src="docs/logo.png" width="96" alt="Umimuko Music logo"/>
