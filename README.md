@@ -65,7 +65,7 @@ Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)**
 |---|---|
 | `Umimuko-Music.msi` | MSI installer for Windows / نصب‌کننده‌ی ویندوز |
 
-**System requirements / پیش‌نیازها:** Windows 10 x64 or later / ویندوز ۱۰ به بالا
+**System requirements / پیش‌نیازها :** Windows 10 x64 or later / ویندوز ۱۰ به بالا
 
 ---
 
