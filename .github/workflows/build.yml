@@ -77,7 +77,7 @@ jobs:
           path: |
             ${{ matrix.artifact-path }}
             ${{ matrix.extra-artifact-path }}
-          if-no-files-found: error
+          if-no-files-found: warn
 
   release:
     name: Publish Release Assets
