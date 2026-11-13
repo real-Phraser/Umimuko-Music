@@ -1,0 +1,7 @@
+Material Symbols Rounded — Google
+Source: https://github.com/google/material-design-icons
+License: Apache License, Version 2.0 (LICENSE.txt).
+Original SVG files are unmodified. Rendering uses the bundled SVG resources.
+24px optical size, default weight 400; filled playback, outlined utility icons.
+playlist_add.svg and settings.svg are adapted from PixelPlayerOSS's bundled
+Android vectors (GPL-3.0), see manifest.json; the remaining Google SVG files are unmodified.
