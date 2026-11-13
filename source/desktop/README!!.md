@@ -11,5 +11,4 @@ The folder structure should look like this:
 ```
 desktop/vlc/...
 
-README.md
 ```
