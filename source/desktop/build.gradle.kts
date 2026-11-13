@@ -210,6 +210,12 @@ compose.desktop {
             dependsOn("prepareBundledVlc")
         }
         mainClass = "com.lostf1sh.pixelplayeross.desktop.MainKt"
+        jvmArgs += listOf(
+            "-Dapple.awt.application.name=Umimuko Music",
+            "-Xdock:name=Umimuko Music",
+            "-Dapple.awt.application.appearance=system",
+            "-Dapple.laf.useScreenMenuBar=true"
+        )
         nativeDistributions {
             targetFormats(
                 TargetFormat.Dmg,
@@ -235,6 +241,16 @@ compose.desktop {
                 bundleID = "com.phraser.umimukomusic"
                 dockName = "Umimuko Music"
                 packageVersion = "1.0.0"
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>CFBundleName</key>
+                        <string>Umimuko Music</string>
+                        <key>CFBundleDisplayName</key>
+                        <string>Umimuko Music</string>
+                        <key>NSRequiresAquaSystemAppearance</key>
+                        <false/>
+                    """.trimIndent()
+                }
             }
             linux {
                 iconFile.set(project.file("packaging/umimuko.png"))
@@ -323,6 +339,12 @@ tasks.withType<JavaExec>().configureEach {
         if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
             dependsOn(prepareBundledVlc)
             systemProperty("compose.application.resources.dir", bundledResources.get().asFile.absolutePath)
+        }
+        if (System.getProperty("os.name").contains("mac", ignoreCase = true)) {
+            systemProperty("apple.awt.application.name", "Umimuko Music")
+            systemProperty("apple.awt.application.appearance", "system")
+            systemProperty("apple.laf.useScreenMenuBar", "true")
+            jvmArgs("-Xdock:name=Umimuko Music", "-Dapple.awt.application.name=Umimuko Music")
         }
     }
 }

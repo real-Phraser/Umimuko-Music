@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.prefs.Preferences
+import com.lostf1sh.pixelplayeross.desktop.library.PlatformPaths
 
 /** Material 3 "emphasized decelerate": quick start, long soft landing. */
 val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
@@ -43,11 +44,14 @@ object StartupPrefs {
     var introEnabled: Boolean
         get() = try { node.getBoolean("startupAnimation", true) } catch (e: Exception) { true }
         set(value) { try { node.putBoolean("startupAnimation", value) } catch (e: Exception) {} }
+    var followSystemTheme: Boolean
+        get() = try { node.getBoolean("followSystemTheme", true) } catch (e: Exception) { true }
+        set(value) { try { node.putBoolean("followSystemTheme", value) } catch (e: Exception) {} }
     var darkMode: Boolean
         get() = try { node.getBoolean("darkMode", true) } catch (e: Exception) { true }
         set(value) { try { node.putBoolean("darkMode", value) } catch (e: Exception) {} }
     var windowMaximized: Boolean
-        get() = try { node.getBoolean("windowMaximized", true) } catch (e: Exception) { true }
+        get() = try { node.getBoolean("windowMaximized", !PlatformPaths.isMac()) } catch (e: Exception) { !PlatformPaths.isMac() }
         set(value) { try { node.putBoolean("windowMaximized", value) } catch (e: Exception) {} }
     var windowWidth: Int
         get() = try { node.getInt("windowWidth", 1180) } catch (e: Exception) { 1180 }

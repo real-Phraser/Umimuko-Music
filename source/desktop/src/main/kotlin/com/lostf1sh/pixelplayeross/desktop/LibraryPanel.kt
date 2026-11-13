@@ -57,7 +57,7 @@ private data class LibraryRoute(val tab:LibraryTab,val selected:String?,val quer
 private data class PlaybackSummary(val ready: Boolean=false, val song: DesktopSong?=null, val playing: Boolean=false)
 
 @Composable
-fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlayer: Boolean, onFullPlayer: (Boolean) -> Unit, playerCollapsed:Boolean, onPlayerCollapsed:(Boolean)->Unit, onAlbumAccent: (Int?) -> Unit) {
+fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlayer: Boolean, onFullPlayer: (Boolean) -> Unit, playerCollapsed:Boolean, onPlayerCollapsed:(Boolean)->Unit, audioController: AudioController? = null, onAlbumAccent: (Int?) -> Unit) {
     val appColors=MaterialTheme.colorScheme
     val queuePalette=remember(appColors){queueColorScheme(appColors)}
     val fullscreenQueuePalette=remember(appColors){queueColorScheme(fullPlayerColorScheme(appColors.primary.toArgb()))}
@@ -90,7 +90,10 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
     val scope = rememberCoroutineScope()
     val scanner = remember { FolderScanner() }
     val folderStore = remember { FolderRootsStore.defaultStore() }
-    val audio = remember { AudioController() }
+    val audio = audioController ?: remember { AudioController() }
+    if (audioController == null) {
+        DisposableEffect(audio) { onDispose { audio.close() } }
+    }
     val homeCoordinator=remember(audio){HomeCoordinator(audio)}
     val home by homeCoordinator.state.collectAsState()
     DisposableEffect(homeCoordinator){onDispose{homeCoordinator.close()}}

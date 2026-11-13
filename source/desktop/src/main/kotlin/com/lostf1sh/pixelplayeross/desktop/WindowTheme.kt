@@ -2,6 +2,7 @@ package com.lostf1sh.pixelplayeross.desktop
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import com.lostf1sh.pixelplayeross.desktop.library.PlatformPaths
 import com.sun.jna.Library
 import com.sun.jna.Native
 import com.sun.jna.Pointer
@@ -16,8 +17,8 @@ interface User32Api : Library {
 }
 
 /**
- * Makes the native Windows title bar follow the app theme: dark/light caption (Windows 10 2004+), and on
- * Windows 11 the exact caption and text colors. Anything that is unsupported is ignored.
+ * Makes the native window title bar follow the app theme: dark/light caption (Windows 10 2004+ and macOS),
+ * and on Windows 11 the exact caption and text colors. Anything that is unsupported is ignored.
  */
 object WindowTheme {
     private val windows = System.getProperty("os.name").orEmpty().startsWith("Windows")
@@ -31,6 +32,18 @@ object WindowTheme {
 
     /** Returns true when the colors were applied (or there is nothing to do on this system). */
     fun apply(window: java.awt.Window, dark: Boolean, background: Color, text: Color): Boolean {
+        if (PlatformPaths.isMac()) {
+            return try {
+                val rootPane = (window as? javax.swing.RootPaneContainer)?.rootPane
+                val appearance = if (dark) "NSAppearanceNameDarkAqua" else "NSAppearanceNameAqua"
+                rootPane?.putClientProperty("apple.awt.windowAppearance", appearance)
+                rootPane?.repaint()
+                window.repaint()
+                true
+            } catch (e: Throwable) {
+                false
+            }
+        }
         val api = dwm ?: return true
         return try {
             val hwnd = Native.getComponentPointer(window) ?: return false
