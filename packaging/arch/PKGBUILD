@@ -1,0 +1,26 @@
+# Maintainer: Umimuko Music Contributors
+pkgname=umimuko-music-bin
+pkgver=0.22.2
+pkgrel=1
+pkgdesc="A clean, offline-first desktop music player"
+arch=('x86_64' 'aarch64')
+url="https://github.com/real-Phraser/umimuko-music"
+license=('GPL3')
+depends=('vlc')
+provides=('umimuko-music')
+conflicts=('umimuko-music')
+
+package() {
+    install -d "$pkgdir/opt/umimuko-music"
+    if [ -d "$srcdir/Umimuko Music" ]; then
+        cp -a "$srcdir/Umimuko Music/." "$pkgdir/opt/umimuko-music/"
+    elif [ -d "$srcdir/app" ]; then
+        cp -a "$srcdir/." "$pkgdir/opt/umimuko-music/"
+    fi
+
+    install -d "$pkgdir/usr/bin"
+    ln -s "/opt/umimuko-music/bin/Umimuko Music" "$pkgdir/usr/bin/umimuko-music"
+
+    install -Dm644 "$startdir/umimuko-music.desktop" "$pkgdir/usr/share/applications/umimuko-music.desktop"
+    install -Dm644 "$startdir/../umimuko.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/umimuko-music.png"
+}

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Umimuko Music
+Comment=A clean, offline-first desktop music player
+Exec=/usr/bin/umimuko-music
+Icon=umimuko-music
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=Umimuko Music
