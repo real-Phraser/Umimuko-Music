@@ -3,6 +3,8 @@
 build/
 **/build/
 **/.gradle/
+.kotlin/
+**/.kotlin/
 
 # OS specific files
 .DS_Store

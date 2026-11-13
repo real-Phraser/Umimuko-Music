@@ -9,6 +9,5 @@ This app uses VLC internally for audio playback. VLC is **not included** in the 
 
 The folder structure should look like this:
 ```
-desktop/vlc/...
-
+vlc/...
 ```

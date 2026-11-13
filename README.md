@@ -87,9 +87,14 @@ JDK 17 is required.
 # Run directly
 .\gradlew.bat run
 
+# Build portable application
+.\BUILD-PORTABLE.cmd
+
 # Build installer (.exe / .msi)
-.\gradlew.bat packageDistributionForCurrentOS
+.\BUILD-INSTALLERS.cmd
 ```
+
+> **Note for Windows developers:** Building standalone Windows distributions requires VLC 3.x (64-bit). The build script automatically attempts to download it, or you can provide it manually. See [docs/README-VLC-Setup.md](docs/README-VLC-Setup.md) for details.
 
 ---
 

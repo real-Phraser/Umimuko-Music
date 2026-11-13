@@ -228,7 +228,7 @@ compose.desktop {
             packageVersion = "0.22.2"
             description = "Umimuko Music desktop music player"
             vendor = "Umimuko Music contributors"
-            licenseFile.set(project.file("../../LICENSE"))
+            licenseFile.set(project.file("LICENSE"))
             includeAllModules = true
             windows {
                 iconFile.set(project.file("packaging/umimuko.ico"))

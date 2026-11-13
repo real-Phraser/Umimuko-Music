@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DESKTOP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-BUILD_DIR="$DESKTOP_DIR/build/compose/binaries/main/app"
-OUT_DIR="$DESKTOP_DIR/build/compose/binaries/main/arch"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BUILD_DIR="$PROJECT_DIR/build/compose/binaries/main/app"
+OUT_DIR="$PROJECT_DIR/build/compose/binaries/main/arch"
 
 APP_SRC=""
 if [ -d "$BUILD_DIR/Umimuko Music" ]; then

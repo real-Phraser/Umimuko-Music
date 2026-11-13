@@ -26,21 +26,21 @@ jobs:
           - os: windows-latest
             artifact-name: umimuko-music-windows
             build-cmd: .\gradlew.bat packageDistributionForCurrentOS checkDataModels
-            artifact-path: source/desktop/build/compose/binaries/main/*/*.msi
-            extra-artifact-path: source/desktop/build/compose/binaries/main/*/*.exe
+            artifact-path: build/compose/binaries/main/*/*.msi
+            extra-artifact-path: build/compose/binaries/main/*/*.exe
 
           - os: macos-latest
             artifact-name: umimuko-music-macos
             build-cmd: ./gradlew packageDmg checkDataModels
-            artifact-path: source/desktop/build/compose/binaries/main/dmg/*.dmg
+            artifact-path: build/compose/binaries/main/dmg/*.dmg
 
           - os: ubuntu-latest
             artifact-name: umimuko-music-linux
             build-cmd: ./gradlew packageDistributionForCurrentOS packageArchLinux checkDataModels
-            artifact-path: source/desktop/build/compose/binaries/main/*/*.deb
+            artifact-path: build/compose/binaries/main/*/*.deb
             extra-artifact-path: |
-              source/desktop/build/compose/binaries/main/*/*.rpm
-              source/desktop/build/compose/binaries/main/arch/*.pkg.tar.zst
+              build/compose/binaries/main/*/*.rpm
+              build/compose/binaries/main/arch/*.pkg.tar.zst
 
     steps:
       - name: Checkout repository
@@ -67,7 +67,6 @@ jobs:
           brew install --cask vlc
 
       - name: Build application binaries
-        working-directory: source/desktop
         run: ${{ matrix.build-cmd }}
 
       - name: Upload binaries as build artifact
