@@ -1,3 +1,0 @@
-Rubik by The Rubik Project Authors; SIL Open Font License 1.1 (OFL.txt).
-Original variable font from google/fonts; four static weight instances produced with fontTools.
-No font downloads or font installation required at runtime.
