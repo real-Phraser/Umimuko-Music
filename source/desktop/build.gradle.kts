@@ -197,29 +197,49 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation("uk.co.caprica:vlcj:4.8.3")
-    implementation(files("libs/jaudiotagger-3.0.1.jar"))
-    implementation(files("libs/jna-5.14.0.jar"))
+    implementation("net.jthink:jaudiotagger:3.0.1")
+    implementation("net.java.dev.jna:jna:5.14.0")
+    implementation("net.java.dev.jna:jna-platform:5.14.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
     testImplementation(kotlin("test"))
 }
 
 compose.desktop {
     application {
-        dependsOn("prepareBundledVlc")
+        if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+            dependsOn("prepareBundledVlc")
+        }
         mainClass = "com.lostf1sh.pixelplayeross.desktop.MainKt"
         nativeDistributions {
-            targetFormats(TargetFormat.Exe, TargetFormat.Msi)
+            targetFormats(
+                TargetFormat.Dmg,
+                TargetFormat.Deb,
+                TargetFormat.Rpm,
+                TargetFormat.Exe,
+                TargetFormat.Msi
+            )
             packageName = "Umimuko Music"
             packageVersion = "0.22.2"
             description = "Umimuko Music desktop music player"
             vendor = "Umimuko Music contributors"
-            licenseFile.set(project.file("../LICENSE"))
+            licenseFile.set(project.file("../../LICENSE"))
             includeAllModules = true
             windows {
                 iconFile.set(project.file("packaging/umimuko.ico"))
                 menuGroup = "Umimuko Music"
                 shortcut = true
                 upgradeUuid = "48f05696-9b27-4bdf-905b-5cb0a842d923"
+            }
+            macOS {
+                iconFile.set(project.file("packaging/umimuko.icns"))
+                bundleID = "com.phraser.umimukomusic"
+                dockName = "Umimuko Music"
+                packageVersion = "1.0.0"
+            }
+            linux {
+                iconFile.set(project.file("packaging/umimuko.png"))
+                packageName = "umimuko-music"
+                menuGroup = "Audio"
             }
         }
     }
@@ -229,8 +249,10 @@ compose.desktop {
 // it. This also handles the first build, when generated resource directories
 // do not exist yet during Compose configuration.
 tasks.matching { it.name == "createDistributable" }.configureEach {
-    dependsOn(prepareBundledVlc)
-    inputs.dir(bundledResources)
+    if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+        dependsOn(prepareBundledVlc)
+        inputs.dir(bundledResources)
+    }
     val image = windowsAppImage
     outputs.upToDateWhen {
         !System.getProperty("os.name").startsWith("Windows", ignoreCase = true) ||
@@ -251,6 +273,13 @@ tasks.matching { it.name == "createDistributable" }.configureEach {
             }
         }
     }
+}
+
+val packageArchLinux by tasks.registering(Exec::class) {
+    group = "distribution"
+    description = "Package for Arch Linux (.pkg.tar.zst)"
+    dependsOn("createDistributable")
+    commandLine("bash", project.file("packaging/arch/package-arch.sh").absolutePath)
 }
 
 val verifyWindowsAppImage by tasks.registering {
@@ -291,7 +320,9 @@ tasks.register<JavaExec>("checkDataModels") {
 
 tasks.withType<JavaExec>().configureEach {
     if (name == "run") {
-        dependsOn(prepareBundledVlc)
-        systemProperty("compose.application.resources.dir", bundledResources.get().asFile.absolutePath)
+        if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+            dependsOn(prepareBundledVlc)
+            systemProperty("compose.application.resources.dir", bundledResources.get().asFile.absolutePath)
+        }
     }
 }

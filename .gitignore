@@ -1,0 +1,14 @@
+# Build and cache directories
+.gradle/
+build/
+**/build/
+**/.gradle/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# IDE and editors
+.idea/
+*.iml
+.vscode/

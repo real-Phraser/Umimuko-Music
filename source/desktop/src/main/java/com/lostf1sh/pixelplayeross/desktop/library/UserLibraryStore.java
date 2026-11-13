@@ -27,9 +27,7 @@ public final class UserLibraryStore {
     private boolean loaded;
     public UserLibraryStore(Path file) { this.file=file; }
     public static UserLibraryStore defaultStore() {
-        String appdata=System.getenv("LOCALAPPDATA");
-        Path base=appdata==null || appdata.isBlank() ? Path.of(System.getProperty("user.home"),".local","share") : Path.of(appdata);
-        return new UserLibraryStore(base.resolve("PixelPlayerDesktop").resolve("library-v1.properties"));
+        return new UserLibraryStore(PlatformPaths.getDataDirectory().resolve("library-v1.properties"));
     }
     public synchronized Snapshot load() throws IOException {
         if (!Files.exists(file)) { loaded=true; return current; }

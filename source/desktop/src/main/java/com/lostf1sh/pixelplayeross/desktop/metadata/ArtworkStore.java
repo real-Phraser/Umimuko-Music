@@ -12,6 +12,8 @@ import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 
+import com.lostf1sh.pixelplayeross.desktop.library.PlatformPaths;
+
 /** Local, content-addressed 512px cover thumbnails. Source music is never modified. */
 public final class ArtworkStore {
     public static final int MAX_BYTES = 16 * 1024 * 1024;
@@ -24,10 +26,7 @@ public final class ArtworkStore {
     }
     public ArtworkStore(Path cache) { this.cache = cache; }
     public static ArtworkStore defaultStore() {
-        String local = System.getenv("LOCALAPPDATA");
-        Path root = local == null || local.isBlank()
-            ? Path.of(System.getProperty("user.home"), ".cache") : Path.of(local);
-        return new ArtworkStore(root.resolve("PixelPlayerDesktop").resolve("covers-v1"));
+        return new ArtworkStore(PlatformPaths.getCacheDirectory());
     }
     public Cover store(byte[] data) throws Exception {
         if (data == null || data.length == 0 || data.length > MAX_BYTES) return null;

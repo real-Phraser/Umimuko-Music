@@ -1,6 +1,7 @@
 package com.lostf1sh.pixelplayeross.desktop.playback
 
 import com.lostf1sh.pixelplayeross.desktop.library.DesktopSong
+import com.lostf1sh.pixelplayeross.desktop.library.PlatformPaths
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import uk.co.caprica.vlcj.factory.MediaPlayerFactory
@@ -56,7 +57,7 @@ class AudioController : AutoCloseable {
             try {
                 val bundled = configureBundledVlc()
                 val arguments = mutableListOf("--no-video", "--no-media-library", "--file-caching=500")
-                if (System.getProperty("os.name").startsWith("Windows", ignoreCase=true)) {
+                if (PlatformPaths.isWindows()) {
                     val output = System.getenv("PIXELPLAYER_AUDIO_OUTPUT")?.lowercase() ?: "directsound"
                     if (output in setOf("directsound", "mmdevice")) arguments += "--aout=$output"
                 }
@@ -82,11 +83,13 @@ class AudioController : AutoCloseable {
                 player!!.audio().setVolume(80)
                 mutable.value = mutable.value.copy(ready = true)
             } catch (failure: Throwable) {
-                mutable.value = mutable.value.copy(error =
-                    (if (System.getProperty("compose.application.resources.dir") != null)
-                        "Bundled audio engine unavailable. Extract the entire Umimuko Music folder or reinstall. "
-                    else "Audio engine unavailable. Install VLC 3 (64-bit), then restart Umimuko Music. ") +
-                    (failure.message ?: failure.javaClass.simpleName))
+                val helpMsg = when {
+                    PlatformPaths.isMac() -> "VLC was not found. Please install VLC from https://www.videolan.org or run 'brew install --cask vlc', then restart Umimuko Music. "
+                    PlatformPaths.isLinux() -> "VLC was not found. Please install VLC using your package manager (e.g. 'sudo apt install vlc' or 'sudo pacman -S vlc'), then restart Umimuko Music. "
+                    System.getProperty("compose.application.resources.dir") != null -> "Bundled audio engine unavailable. Extract the entire Umimuko Music folder or reinstall. "
+                    else -> "Audio engine unavailable. Install VLC 3 (64-bit), then restart Umimuko Music. "
+                }
+                mutable.value = mutable.value.copy(error = helpMsg + (failure.message ?: failure.javaClass.simpleName))
                 player?.release()
                 player = null
                 factory?.release()

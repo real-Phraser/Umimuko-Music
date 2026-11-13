@@ -11,10 +11,12 @@
 
 # Umimuko Music
 
-**A clean, offline-first music player for Windows — no streaming, no accounts, just your music.**
+**A clean, offline-first music player for Windows, macOS, and Linux — no streaming, no accounts, just your music.**
 
 [![Release](https://img.shields.io/github/v/release/real-Phraser/umimuko-music?style=flat-square&color=e05c5c)](https://github.com/real-Phraser/umimuko-music/releases)
 [![Windows](https://img.shields.io/badge/Windows-10%2B-0078d4?style=flat-square&logo=windows)](https://github.com/real-Phraser/umimuko-music/releases)
+[![macOS](https://img.shields.io/badge/macOS-12%2B-000000?style=flat-square&logo=apple)](https://github.com/real-Phraser/umimuko-music/releases)
+[![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat-square&logo=linux&logoColor=black)](https://github.com/real-Phraser/umimuko-music/releases)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2-7f52ff?style=flat-square&logo=kotlin)](https://kotlinlang.org)
 [![License](https://img.shields.io/github/license/real-Phraser/umimuko-music?style=flat-square)](LICENSE)
 
@@ -54,17 +56,34 @@
 
 ## 🛒 Download
 
-Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** page and download the latest `.msi` installer.
-
-**System requirements:** Windows 10 x64 or later
+Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** page and download the package for your operating system:
+- **Windows**: `.msi` or `.exe` installer (bundled with VLC audio engine).
+- **macOS**: `.dmg` package (requires VLC 3.x, available via `brew install --cask vlc` or [videolan.org](https://www.videolan.org)).
+- **Linux**: `.deb`, `.rpm`, or Arch Linux `.pkg.tar.zst` (requires system `vlc` package).
 
 ---
 
 ## 🛠️ Build from source
 
-JDK 17 x64 is required.
+JDK 17 is required.
 
+### macOS & Linux
 ```bash
+# Run directly
+./gradlew run
+
+# Build portable application
+./BUILD-PORTABLE.sh
+
+# Build installer package for current OS (.dmg on macOS, .deb/.rpm on Linux)
+./BUILD-INSTALLERS.sh
+
+# Build Arch Linux package (.pkg.tar.zst)
+./gradlew packageArchLinux
+```
+
+### Windows
+```cmd
 # Run directly
 .\gradlew.bat run
 
@@ -79,7 +98,8 @@ JDK 17 x64 is required.
 - [Kotlin 2.2](https://kotlinlang.org) + [Compose Desktop 1.9](https://www.jetbrains.com/lp/compose-multiplatform/)
 - [Material 3](https://m3.material.io/) design system
 - [JAudioTagger](https://www.jthink.net/jaudiotagger/) for tag reading
-- [JNA](https://github.com/java-native-access/jna) for Windows API integration
+- [vlcj](https://github.com/caprica/vlcj) + VLC 3 for high-fidelity audio playback
+- Native media integrations: WinRT SMTC (Windows), MPRemoteCommandCenter (macOS), MPRIS2 (Linux)
 
 ---
 

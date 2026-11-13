@@ -20,9 +20,7 @@ public final class HomeStore {
     private boolean loaded;
     public HomeStore(Path directory){this.directory=directory;}
     public static HomeStore defaultStore(){
-        String appdata=System.getenv("LOCALAPPDATA");
-        Path base=appdata==null||appdata.isBlank()?Path.of(System.getProperty("user.home"),".local","share"):Path.of(appdata);
-        return new HomeStore(base.resolve("PixelPlayerDesktop").resolve("home-v1"));
+        return new HomeStore(PlatformPaths.getDataDirectory().resolve("home-v1"));
     }
     public synchronized Snapshot snapshot(){return new Snapshot(added,recent,pins,session);}
     private Properties read(String name) throws IOException {

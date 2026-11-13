@@ -10,10 +10,12 @@
 
 # Umimuko Music
 
-**پلیر موسیقی تمیز و آفلاین برای ویندوز — بدون استریمینگ، بدون اکانت، فقط موسیقی شما.**
+**پلیر موسیقی تمیز و آفلاین برای ویندوز، مک‌او‌اس و لینوکس — بدون استریمینگ، بدون اکانت، فقط موسیقی شما.**
 
 [![Release](https://img.shields.io/github/v/release/real-Phraser/umimuko-music?style=flat-square&color=e05c5c)](https://github.com/real-Phraser/umimuko-music/releases)
 [![Windows](https://img.shields.io/badge/Windows-10%2B-0078d4?style=flat-square&logo=windows)](https://github.com/real-Phraser/umimuko-music/releases)
+[![macOS](https://img.shields.io/badge/macOS-12%2B-000000?style=flat-square&logo=apple)](https://github.com/real-Phraser/umimuko-music/releases)
+[![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat-square&logo=linux&logoColor=black)](https://github.com/real-Phraser/umimuko-music/releases)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2-7f52ff?style=flat-square&logo=kotlin)](https://kotlinlang.org)
 [![License](https://img.shields.io/github/license/real-Phraser/umimuko-music?style=flat-square)](LICENSE)
 
@@ -53,17 +55,34 @@
 
 ## 🛒 دانلود
 
-به صفحه‌ی **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** برو و آخرین نسخه‌ی `.msi` رو دانلود کن.
-
-**پیش‌نیازها:** ویندوز ۱۰ نسخه‌ی ۶۴ بیتی به بالا
+به صفحه‌ی **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** بروید و فایل مناسب سیستم‌عامل خود را دانلود کنید:
+- **ویندوز**: فایل `.msi` یا `.exe` (شامل موتور داخلی VLC).
+- **مک‌او‌اس**: فایل `.dmg` (نیازمند نصب بودن VLC نسخه‌ی ۳).
+- **لینوکس**: بسته‌های `.deb`، `.rpm` یا بسته‌ی آرچ لینوکس (`.pkg.tar.zst`).
 
 ---
 
 ## 🛠️ ساخت از سورس
 
-نیاز به JDK 17 نسخه‌ی ۶۴ بیتی داری.
+نیاز به JDK 17 دارید.
 
+### مک‌او‌اس و لینوکس
 ```bash
+# اجرای مستقیم
+./gradlew run
+
+# ساخت نسخه پرتابل
+./BUILD-PORTABLE.sh
+
+# ساخت فایل نصبی (.dmg در مک، .deb/.rpm در لینوکس)
+./BUILD-INSTALLERS.sh
+
+# ساخت بسته آرچ لینوکس
+./gradlew packageArchLinux
+```
+
+### ویندوز
+```cmd
 # اجرای مستقیم
 .\gradlew.bat run
 

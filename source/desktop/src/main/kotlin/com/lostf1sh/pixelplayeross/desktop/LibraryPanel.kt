@@ -29,7 +29,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.unit.dp
 import com.lostf1sh.pixelplayeross.desktop.library.*
 import com.lostf1sh.pixelplayeross.desktop.playback.AudioController
-import com.lostf1sh.pixelplayeross.desktop.playback.WindowsMediaSession
+import com.lostf1sh.pixelplayeross.desktop.playback.PlatformMediaSession
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -96,24 +96,23 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
     DisposableEffect(homeCoordinator){onDispose{homeCoordinator.close()}}
     LaunchedEffect(songs){if(songs.isNotEmpty())homeCoordinator.registerLibrary(songs.map{it.id})}
     val mediaSession = remember(audio,parent) {
-        if(System.getProperty("os.name").startsWith("Windows",ignoreCase=true)) {
-            try {WindowsMediaSession(parent as java.awt.Window) { button ->
-                when(button) {
-                    0 -> audio.resume()
-                    1,2 -> audio.pause()
-                    6 -> audio.next()
-                    7 -> audio.previous()
-                }
-            }} catch(_:Throwable) {null}
-        } else null
+        val window = parent as? java.awt.Window
+        PlatformMediaSession.create(window) { button ->
+            when(button) {
+                0 -> audio.resume()
+                1,2 -> audio.pause()
+                6 -> audio.next()
+                7 -> audio.previous()
+            }
+        }
     }
     DisposableEffect(mediaSession) {onDispose {mediaSession?.close()}}
     LaunchedEffect(mediaSession) {
         if(mediaSession!=null) while(isActive) {
             delay(2000)
             val failure=mediaSession.failureMessage
-            if(failure!=null) error="Windows media controls: $failure"
-            else if(error?.startsWith("Windows media controls:")==true) error=null
+            if(failure!=null) error="Media controls: $failure"
+            else if(error?.startsWith("Media controls:")==true || error?.startsWith("Windows media controls:")==true) error=null
         }
     }
     LaunchedEffect(mediaSession) {

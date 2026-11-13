@@ -7,9 +7,7 @@ public final class FolderRootsStore {
     private final Path file;
     public FolderRootsStore(Path file){this.file=file;}
     public static FolderRootsStore defaultStore(){
-        String env=System.getenv("LOCALAPPDATA");
-        Path base=env==null||env.isBlank()?Path.of(System.getProperty("user.home"),".local","share"):Path.of(env);
-        return new FolderRootsStore(base.resolve("PixelPlayerDesktop").resolve("folders-v1.properties"));
+        return new FolderRootsStore(PlatformPaths.getDataDirectory().resolve("folders-v1.properties"));
     }
     public List<String> load() throws IOException {
         if(!Files.exists(file))return List.of();

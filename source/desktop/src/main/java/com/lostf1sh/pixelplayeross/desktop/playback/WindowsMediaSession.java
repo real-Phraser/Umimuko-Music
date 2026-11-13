@@ -19,7 +19,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.function.IntConsumer;
 
 /** Windows SMTC ABI bridge. COM calls are confined to one MTA thread. */
-public final class WindowsMediaSession implements AutoCloseable {
+public final class WindowsMediaSession implements PlatformMediaSession {
     private static final String APP_ID="Umimuko.Music";
     private static final String CONTROLS="99fa3ff4-1742-42a6-902e-087d41f965ec";
     private static final String INTEROP="ddb0472d-c911-4a1f-86d9-dc3d71a95f5a";
@@ -40,11 +40,11 @@ public final class WindowsMediaSession implements AutoCloseable {
     private HttpServer coverServer;
     private final Map<String,Path> covers=Collections.synchronizedMap(new LinkedHashMap<>());
     private volatile boolean closed;
-    private volatile String failureMessage;
+    private volatile String failureDetail;
     private volatile Snapshot pending;
     private record Snapshot(String title,String artist,String album,String coverPath,
                             boolean playing,boolean previous,boolean next) { }
-    public String getFailureMessage() {return failureMessage;}
+    @Override public String getFailureMessage() {return failureDetail;}
     /** Give the unpackaged desktop window a stable identity before it is created. */
     public static void configureProcess() {
         if(!System.getProperty("os.name").startsWith("Windows"))return;
@@ -59,7 +59,7 @@ public final class WindowsMediaSession implements AutoCloseable {
         if (!System.getProperty("os.name").startsWith("Windows")) return;
         worker.execute(() -> {try {initialize(Native.getWindowPointer(window));}
             catch(Throwable failure) {
-                failureMessage=failure.toString();
+                failureDetail=failure.toString();
                 System.err.println("PixelPlayer media session: " + failure);cleanup();
             }});
     }
@@ -117,9 +117,9 @@ public final class WindowsMediaSession implements AutoCloseable {
     }
     private void tryRegisterButtons() {
         if(buttonsRegistered || closed)return;
-        try {registerButtons();failureMessage=null;}
+        try {registerButtons();failureDetail=null;}
         catch(Throwable failure) {
-            failureMessage="Media buttons: "+failure;
+            failureDetail="Media buttons: "+failure;
             if(!buttonFailureLogged)System.err.println("Umimuko media buttons: "+failure);
             buttonFailureLogged=true;
         }
@@ -197,10 +197,10 @@ public final class WindowsMediaSession implements AutoCloseable {
             check(call(updater,17));
             check(call(controls,25,(byte)(state.previous()?1:0)));check(call(controls,27,(byte)(state.next()?1:0)));
             check(call(controls,7,state.playing()?3:4));
-            if(buttonsRegistered)failureMessage=null;
+            if(buttonsRegistered)failureDetail=null;
             else tryRegisterButtons();
         } catch(Throwable failure) {
-            failureMessage=failure.toString();
+            failureDetail=failure.toString();
             System.err.println("PixelPlayer media update: " + failure);
         }
     }
