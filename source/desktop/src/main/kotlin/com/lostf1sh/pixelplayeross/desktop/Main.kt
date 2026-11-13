@@ -22,10 +22,13 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
 import java.awt.Dimension
+import com.lostf1sh.pixelplayeross.desktop.library.PlatformPaths
 import com.lostf1sh.pixelplayeross.desktop.playback.WindowsMediaSession
 
 fun main() {
-    WindowsMediaSession.configureProcess()
+    if (PlatformPaths.isWindows()) {
+        WindowsMediaSession.configureProcess()
+    }
     IntroState.active.value=StartupPrefs.introEnabled
     IntroState.heroPending.value=StartupPrefs.introEnabled
     application {

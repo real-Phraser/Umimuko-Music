@@ -23,7 +23,7 @@ public final class WindowsMediaSession implements PlatformMediaSession {
     private static final String APP_ID="Umimuko.Music";
     private static final String CONTROLS="99fa3ff4-1742-42a6-902e-087d41f965ec";
     private static final String INTEROP="ddb0472d-c911-4a1f-86d9-dc3d71a95f5a";
-    private static final NativeLibrary COMBASE=NativeLibrary.getInstance("combase");
+    private static final NativeLibrary COMBASE = com.sun.jna.Platform.isWindows() ? NativeLibrary.getInstance("combase") : null;
     private final ExecutorService worker=Executors.newSingleThreadExecutor(r -> {
         Thread thread=new Thread(r,"pixel-windows-media");thread.setDaemon(true);return thread;
     });

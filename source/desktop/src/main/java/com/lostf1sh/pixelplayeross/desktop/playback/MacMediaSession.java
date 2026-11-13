@@ -1,5 +1,6 @@
 package com.lostf1sh.pixelplayeross.desktop.playback;
 
+import com.lostf1sh.pixelplayeross.desktop.library.PlatformPaths;
 import com.sun.jna.Callback;
 import com.sun.jna.NativeLibrary;
 import com.sun.jna.Pointer;
@@ -17,7 +18,7 @@ public final class MacMediaSession implements PlatformMediaSession {
         long invoke(Pointer self, Pointer cmd, Pointer event);
     }
 
-    private static final NativeLibrary OBJC = NativeLibrary.getInstance("objc");
+    private static final NativeLibrary OBJC = PlatformPaths.isMac() ? NativeLibrary.getInstance("objc") : null;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "pixel-mac-media");
         thread.setDaemon(true);
