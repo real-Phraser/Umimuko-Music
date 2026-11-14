@@ -11,10 +11,10 @@ class MacMediaTest {
         fun invoke(self: Pointer, cmd: Pointer, event: Pointer): Long
     }
 
-    private val objc = NativeLibrary.getInstance("objc")
-    private val getClass = objc.getFunction("objc_getClass")
-    private val selRegister = objc.getFunction("sel_registerName")
-    private val msgSend = objc.getFunction("objc_msgSend")
+    private val objc by lazy { NativeLibrary.getInstance("objc") }
+    private val getClass by lazy { objc.getFunction("objc_getClass") }
+    private val selRegister by lazy { objc.getFunction("sel_registerName") }
+    private val msgSend by lazy { objc.getFunction("objc_msgSend") }
 
     private fun cls(name: String): Pointer = requireNotNull(getClass.invokePointer(arrayOf(name))) { "Missing class $name" }
     private fun sel(name: String): Pointer = requireNotNull(selRegister.invokePointer(arrayOf(name))) { "Missing sel $name" }
