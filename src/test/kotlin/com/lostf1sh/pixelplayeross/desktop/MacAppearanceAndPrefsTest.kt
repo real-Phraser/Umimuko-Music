@@ -31,6 +31,9 @@ class MacAppearanceAndPrefsTest {
 
     @Test
     fun testWindowThemeApplyOnMac() {
+        if (!PlatformPaths.isMac() || java.awt.GraphicsEnvironment.isHeadless()) {
+            return
+        }
         SwingUtilities.invokeAndWait {
             val frame = JFrame("Test Window Theme")
             frame.setSize(400, 300)
