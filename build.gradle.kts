@@ -227,7 +227,7 @@ compose.desktop {
                 TargetFormat.Msi
             )
             packageName = "Umimuko Music"
-            packageVersion = "0.23.0"
+            packageVersion = "0.24.0"
             description = "Umimuko Music desktop music player"
             vendor = "Umimuko Music contributors"
             licenseFile.set(project.file("LICENSE"))
