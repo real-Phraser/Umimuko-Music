@@ -13,7 +13,7 @@ plugins {
 }
 
 group = "com.lostf1sh.pixelplayeross"
-version = "0.23.0"
+version = "0.24.0"
 
 val offlineVlcDir = layout.projectDirectory.dir("vlc")
 val vlcVersion = "3.0.21"
