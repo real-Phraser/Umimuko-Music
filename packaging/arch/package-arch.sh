@@ -36,11 +36,11 @@ if command -v makepkg >/dev/null 2>&1; then
     echo "Arch package generated at $OUT_DIR"
 else
     echo "makepkg not found (building outside Arch Linux). Packaging tarball with PKGBUILD..."
-    ARCH_PKG_NAME="umimuko-music-0.22.2-1-x86_64.pkg.tar.zst"
+    ARCH_PKG_NAME="umimuko-music-0.23.0-1-x86_64.pkg.tar.zst"
     if command -v zstd >/dev/null 2>&1; then
         tar --zstd -cf "$OUT_DIR/$ARCH_PKG_NAME" -C "$WORK_DIR" .
     else
-        tar -czf "$OUT_DIR/umimuko-music-0.22.2-1.tar.gz" -C "$WORK_DIR" .
+        tar -czf "$OUT_DIR/umimuko-music-0.23.0-1.tar.gz" -C "$WORK_DIR" .
     fi
     echo "Arch package bundle created in $OUT_DIR"
 fi

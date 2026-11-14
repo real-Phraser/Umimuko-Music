@@ -1,6 +1,6 @@
 # Maintainer: Umimuko Music Contributors
 pkgname=umimuko-music-bin
-pkgver=0.22.2
+pkgver=0.23.0
 pkgrel=1
 pkgdesc="A clean, offline-first desktop music player"
 arch=('x86_64' 'aarch64')
