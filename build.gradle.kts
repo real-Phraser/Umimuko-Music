@@ -210,12 +210,14 @@ compose.desktop {
             dependsOn("prepareBundledVlc")
         }
         mainClass = "com.lostf1sh.pixelplayeross.desktop.MainKt"
-        jvmArgs += listOf(
-            "-Dapple.awt.application.name=Umimuko Music",
-            "-Xdock:name=Umimuko Music",
-            "-Dapple.awt.application.appearance=system",
-            "-Dapple.laf.useScreenMenuBar=true"
-        )
+        if (System.getProperty("os.name").startsWith("Mac", ignoreCase = true)) {
+            jvmArgs += listOf(
+                "-Dapple.awt.application.name=Umimuko Music",
+                "-Xdock:name=Umimuko Music",
+                "-Dapple.awt.application.appearance=system",
+                "-Dapple.laf.useScreenMenuBar=true"
+            )
+        }
         nativeDistributions {
             targetFormats(
                 TargetFormat.Dmg,

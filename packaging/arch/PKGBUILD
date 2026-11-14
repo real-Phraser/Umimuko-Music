@@ -22,5 +22,9 @@ package() {
     ln -s "/opt/umimuko-music/bin/Umimuko Music" "$pkgdir/usr/bin/umimuko-music"
 
     install -Dm644 "$startdir/umimuko-music.desktop" "$pkgdir/usr/share/applications/umimuko-music.desktop"
-    install -Dm644 "$startdir/../umimuko.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/umimuko-music.png"
+    if [ -f "$startdir/umimuko.png" ]; then
+        install -Dm644 "$startdir/umimuko.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/umimuko-music.png"
+    elif [ -f "$startdir/../umimuko.png" ]; then
+        install -Dm644 "$startdir/../umimuko.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/umimuko-music.png"
+    fi
 }
