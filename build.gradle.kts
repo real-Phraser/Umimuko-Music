@@ -13,7 +13,7 @@ plugins {
 }
 
 group = "com.lostf1sh.pixelplayeross"
-version = "0.23.0"
+version = "0.24.0"
 
 val offlineVlcDir = layout.projectDirectory.dir("vlc")
 val vlcVersion = "3.0.21"
@@ -210,12 +210,14 @@ compose.desktop {
             dependsOn("prepareBundledVlc")
         }
         mainClass = "com.lostf1sh.pixelplayeross.desktop.MainKt"
-        jvmArgs += listOf(
-            "-Dapple.awt.application.name=Umimuko Music",
-            "-Xdock:name=Umimuko Music",
-            "-Dapple.awt.application.appearance=system",
-            "-Dapple.laf.useScreenMenuBar=true"
-        )
+        if (System.getProperty("os.name").startsWith("Mac", ignoreCase = true)) {
+            jvmArgs += listOf(
+                "-Dapple.awt.application.name=Umimuko Music",
+                "-Xdock:name=Umimuko Music",
+                "-Dapple.awt.application.appearance=system",
+                "-Dapple.laf.useScreenMenuBar=true"
+            )
+        }
         nativeDistributions {
             targetFormats(
                 TargetFormat.Dmg,

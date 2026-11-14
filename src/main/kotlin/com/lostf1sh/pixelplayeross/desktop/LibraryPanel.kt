@@ -459,6 +459,16 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                 onCollapse={onPlayerCollapsed(true)})
             }
         }
+        if(PlatformPaths.isLinux()) {
+            AnimatedVisibility(visible=fullPlayer,enter=fadeIn(tween(200)),exit=fadeOut(tween(200))) {
+                MaterialTheme(colorScheme=fullPlayerColorScheme(playback.song?.accentArgb),typography=AppTypography) {
+                    FullPlayerScreen(audio,liked=saved.isLiked(playback.song?.id),editable=loaded && !saving,
+                        onLike={playback.song?.let {song->mutate({store.toggleLike(song.id)})}},
+                        onAdd={adding=playback.song},onQueue={queueOpen=true},
+                        onExit={queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)})
+                }
+            }
+        }
     }
     if(playerCollapsed && !fullPlayer)FloatingPlayer(applicationScope,audio){onPlayerCollapsed(false)}
     val playlistDialogs: @Composable () -> Unit = {
@@ -496,15 +506,17 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
             mutate({store.delete(id)},{deleting=null;selected=null})
         }) {Text("Delete")}},dismissButton={TextButton(enabled=!saving,onClick={deleting=null}){Text("Cancel")}})
     }
-    // The full player is its own window. Keep it alive while it fades out, and make it transparent so the
+    // The full player is its own window on Windows/macOS. Keep it alive while it fades out, and make it transparent so the
     // content fades over the main window instead of popping in and out.
     var playerWindowShown by remember {mutableStateOf(false)}
     var playerVisible by remember {mutableStateOf(false)}
     LaunchedEffect(fullPlayer) {
-        if(fullPlayer) {playerWindowShown=true;playerVisible=true}
-        else if(playerWindowShown) {playerVisible=false;delay(260);playerWindowShown=false}
+        if(!PlatformPaths.isLinux()) {
+            if(fullPlayer) {playerWindowShown=true;playerVisible=true}
+            else if(playerWindowShown) {playerVisible=false;delay(260);playerWindowShown=false}
+        }
     }
-    if(playerWindowShown) {
+    if(!PlatformPaths.isLinux() && playerWindowShown) {
         // Borderless maximized avoids exclusive full-screen capture restrictions on Windows.
         val playerWindowState=rememberWindowState(placement=WindowPlacement.Maximized)
         with(applicationScope) { Window(onCloseRequest={queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)},state=playerWindowState,
@@ -536,8 +548,9 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
             }
         } }
     }
-    if(!fullPlayer) {
-        if(queueOpen) QueueDialog(audio,onDismiss={queueOpen=false},palette=queuePalette,
+    if(!fullPlayer || PlatformPaths.isLinux()) {
+        if(queueOpen) QueueDialog(audio,onDismiss={queueOpen=false},
+            palette=if(fullPlayer) fullscreenQueuePalette else queuePalette,
             onSaveQueue=if(loaded && !saving)::saveQueue else null,onOpenAlbum=::queueAlbum,onOpenArtist=::queueArtist)
         playlistDialogs()
     }

@@ -361,53 +361,55 @@ private fun FrameWindowScope.DesktopApp(
         },color=colors.background) {
             Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal=28.dp,vertical=14.dp),
-                    verticalAlignment=Alignment.CenterVertically) {
-                    AppIcon(tint=MaterialTheme.colorScheme.onSurface)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Umimuko Music",style=MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.weight(1f))
-                    Box {
-                        FilledTonalIconButton(onClick={settingsOpen=true},shape=CircleShape,
-                            modifier=Modifier.size(40.dp).semantics {contentDescription="Settings"}) {
-                            Glyph("settings",MaterialTheme.colorScheme.onSurface,Modifier.size(22.dp))
-                        }
-                        DropdownMenu(expanded=settingsOpen,onDismissRequest={settingsOpen=false}) {
-                            DropdownMenuItem(text={Text("Follow system theme")},
-                                trailingIcon={Switch(checked=followSystem,onCheckedChange={
-                                    followSystem=it
-                                    if(it) dark=systemDark
-                                })},
-                                onClick={
-                                    followSystem=!followSystem
-                                    if(followSystem) dark=systemDark
-                                })
-                            DropdownMenuItem(text={Text("Dark mode")},
-                                trailingIcon={Switch(checked=dark,onCheckedChange={
-                                    followSystem=false
-                                    dark=it
-                                })},
-                                onClick={
-                                    followSystem=false
-                                    dark=!dark
-                                })
-                            DropdownMenuItem(text={Text("Album colors")},
-                                trailingIcon={Switch(checked=dynamic,onCheckedChange={dynamic=it})},
-                                onClick={dynamic=!dynamic})
-                            DropdownMenuItem(text={Text("Startup animation")},
-                                trailingIcon={Switch(checked=introEnabled,onCheckedChange={introEnabled=it;StartupPrefs.introEnabled=it})},
-                                onClick={introEnabled=!introEnabled;StartupPrefs.introEnabled=introEnabled})
-                            DropdownMenuItem(text={Text("Floating mini player")},
-                                trailingIcon={Switch(checked=playerCollapsed,onCheckedChange={playerCollapsed=it})},
-                                onClick={playerCollapsed=!playerCollapsed})
-                            HorizontalDivider(Modifier.padding(vertical=4.dp))
-                            Column(Modifier.fillMaxWidth().padding(start=16.dp,end=16.dp,top=4.dp,bottom=8.dp),
-                                horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Text("Made by Phraser",style=MaterialTheme.typography.labelMedium,
-                                    color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                Row(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                                    SocialLink("branding/telegram.png","Telegram","https://t.me/theCodePhraser")
-                                    SocialLink("branding/github.png","GitHub","https://github.com/real-Phraser")
+                if (!fullPlayer || !PlatformPaths.isLinux()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal=28.dp,vertical=14.dp),
+                        verticalAlignment=Alignment.CenterVertically) {
+                        AppIcon(tint=MaterialTheme.colorScheme.onSurface)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Umimuko Music",style=MaterialTheme.typography.titleLarge)
+                        Spacer(Modifier.weight(1f))
+                        Box {
+                            FilledTonalIconButton(onClick={settingsOpen=true},shape=CircleShape,
+                                modifier=Modifier.size(40.dp).semantics {contentDescription="Settings"}) {
+                                Glyph("settings",MaterialTheme.colorScheme.onSurface,Modifier.size(22.dp))
+                            }
+                            DropdownMenu(expanded=settingsOpen,onDismissRequest={settingsOpen=false}) {
+                                DropdownMenuItem(text={Text("Follow system theme")},
+                                    trailingIcon={Switch(checked=followSystem,onCheckedChange={
+                                        followSystem=it
+                                        if(it) dark=systemDark
+                                    })},
+                                    onClick={
+                                        followSystem=!followSystem
+                                        if(followSystem) dark=systemDark
+                                    })
+                                DropdownMenuItem(text={Text("Dark mode")},
+                                    trailingIcon={Switch(checked=dark,onCheckedChange={
+                                        followSystem=false
+                                        dark=it
+                                    })},
+                                    onClick={
+                                        followSystem=false
+                                        dark=!dark
+                                    })
+                                DropdownMenuItem(text={Text("Album colors")},
+                                    trailingIcon={Switch(checked=dynamic,onCheckedChange={dynamic=it})},
+                                    onClick={dynamic=!dynamic})
+                                DropdownMenuItem(text={Text("Startup animation")},
+                                    trailingIcon={Switch(checked=introEnabled,onCheckedChange={introEnabled=it;StartupPrefs.introEnabled=it})},
+                                    onClick={introEnabled=!introEnabled;StartupPrefs.introEnabled=introEnabled})
+                                DropdownMenuItem(text={Text("Floating mini player")},
+                                    trailingIcon={Switch(checked=playerCollapsed,onCheckedChange={playerCollapsed=it})},
+                                    onClick={playerCollapsed=!playerCollapsed})
+                                HorizontalDivider(Modifier.padding(vertical=4.dp))
+                                Column(Modifier.fillMaxWidth().padding(start=16.dp,end=16.dp,top=4.dp,bottom=8.dp),
+                                    horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    Text("Made by Phraser",style=MaterialTheme.typography.labelMedium,
+                                        color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Row(horizontalArrangement=Arrangement.spacedBy(12.dp),verticalAlignment=Alignment.CenterVertically) {
+                                        SocialLink("branding/telegram.png","Telegram","https://t.me/theCodePhraser")
+                                        SocialLink("branding/github.png","GitHub","https://github.com/real-Phraser")
+                                    }
                                 }
                             }
                         }
