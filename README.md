@@ -15,7 +15,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/real-Phraser/umimuko-music/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/real-Phraser/umimuko-music/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/real-Phraser/umimuko-music?style=flat-square&color=00A8BF)](https://github.com/real-Phraser/umimuko-music/releases)
-[![Windows](https://img.shields.io/badge/Windows-10%2B-0078d4?style=flat-square&logo=windows11)](https://github.com/real-Phraser/umimuko-music/releases)
+[![Windows](https://img.shields.io/badge/Windows-10%2B-0078d4?style=flat-square&logo=windows11&logoColor=white)](https://github.com/real-Phraser/umimuko-music/releases)
 [![MacOS](https://img.shields.io/badge/MacOS-12%2B-000000?style=flat-square&logo=apple)](https://github.com/real-Phraser/umimuko-music/releases)
 [![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat-square&logo=linux&logoColor=black)](https://github.com/real-Phraser/umimuko-music/releases)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2-7f52ff?style=flat-square&logo=kotlin)](https://kotlinlang.org)
