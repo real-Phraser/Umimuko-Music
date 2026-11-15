@@ -18,6 +18,8 @@ jobs:
   test:
     name: Test (${{ matrix.os }} - ${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
+    env:
+      JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
     strategy:
       fail-fast: false
       matrix:

@@ -6,13 +6,13 @@ class LibraryIndexTest {
     private fun track(id:String,artist:String,album:String="Album",albumArtist:String="")=
         DesktopSong(id,id,"/music/$id/song.flac","FLAC",1,artist,album,albumArtist=albumArtist)
     @Test fun collaboratorsAppearInBothArtistPages() {
-        val groups=LibraryIndex.artists(listOf(track("1","A / B ، a"),track("2","b")))
+        val groups=LibraryIndex.artists(listOf(track("1","A / B \u060C a"),track("2","b")))
         assertEquals(2,groups.size)
         assertEquals(1,groups.first {it.title=="A"}.songs.size)
         assertEquals(2,groups.first {it.title=="B"}.songs.size)
     }
     @Test fun ampersandSeparatesCollaboratorsAndDeduplicatesNames() {
-        val groups=LibraryIndex.artists(listOf(track("1","A & B ＆ a")))
+        val groups=LibraryIndex.artists(listOf(track("1","A & B \uFF06 a")))
         assertEquals(listOf("A","B"),groups.map { it.title })
     }
     @Test fun sameAlbumArtistJoinsDiscsButFallbackSeparatesFolders() {

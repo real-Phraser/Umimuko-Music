@@ -36,6 +36,8 @@ jobs:
   validate:
     name: Validate Build
     runs-on: ubuntu-latest
+    env:
+      JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -64,6 +66,8 @@ jobs:
     name: Package (${{ matrix.artifact-name }})
     needs: validate
     runs-on: ${{ matrix.os }}
+    env:
+      JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
     strategy:
       fail-fast: false
       matrix:

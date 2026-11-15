@@ -347,12 +347,22 @@ tasks.withType<AbstractJPackageTask>().configureEach {
     }
 }
 
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+}
+
+tasks.withType<Test>().configureEach {
+    systemProperty("file.encoding", "UTF-8")
+    defaultCharacterEncoding = "UTF-8"
+}
+
 tasks.register<JavaExec>("checkDataModels") {
     group = "verification"
     description = "Check editable queue, Home persistence and existing library compatibility."
     dependsOn("testClasses")
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.lostf1sh.pixelplayeross.desktop.ModelChecksKt")
+    systemProperty("file.encoding", "UTF-8")
 }
 
 tasks.withType<JavaExec>().configureEach {

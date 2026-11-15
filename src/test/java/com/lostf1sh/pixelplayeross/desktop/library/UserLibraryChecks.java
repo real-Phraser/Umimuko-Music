@@ -6,29 +6,29 @@ public final class UserLibraryChecks {
     private static void check(boolean condition,String message) {if(!condition)throw new AssertionError(message);}
     public static void main(String[] args)throws Exception {runChecks();System.out.println("PASS: artist splitting/deduplication, Unicode persistence, likes, playlist CRUD, track deduplication, failed-write preservation, corrupt-state protection");}
     public static void runChecks()throws Exception {
-        check(ArtistNames.split(" Freddie Gibbs/The Alchemist ، Test, test؛Other; ").equals(
+        check(ArtistNames.split(" Freddie Gibbs/The Alchemist \u060C Test, test\u061BOther; ").equals(
             List.of("Freddie Gibbs","The Alchemist","Test","Other")),"artist separators and case deduplication");
         check(ArtistNames.split("  Earth & Fire ").equals(List.of("Earth & Fire")),"ampersand remains part of name");
-        check(ArtistNames.split("/// ، ؛ ").isEmpty(),"empty artists");
+        check(ArtistNames.split("/// \u060C \u061B ").isEmpty(),"empty artists");
         Path root=Files.createTempDirectory("pixel-library-tests");
         try {
             Path file=root.resolve("library.properties");
             var store=new UserLibraryStore(file);check(store.load().playlists.isEmpty(),"empty state");
             check(!store.load().isLiked(null), "startup with no selected track must not crash");
             check(!store.load().isLiked("missing.flac"), "unliked selection");
-            store.toggleLike("C:\\Music\\آهنگ.flac");
-            var s=store.create("علاقه‌ها = #1");String id=s.playlists.get(0).id;
-            store.add(id,"C:\\Music\\آهنگ.flac");store.add(id,"C:\\Music\\آهنگ.flac");
+            store.toggleLike("C:\\Music\\\u0622\u0647\u0646\u06af.flac");
+            var s=store.create("\u0639\u0644\u0627\u0642\u0647\u200c\u0647\u0627 = #1");String id=s.playlists.get(0).id;
+            store.add(id,"C:\\Music\\\u0622\u0647\u0646\u06af.flac");store.add(id,"C:\\Music\\\u0622\u0647\u0646\u06af.flac");
             var loaded=new UserLibraryStore(file).load();
-            check(loaded.isLiked("C:\\Music\\آهنگ.flac"),"Unicode liked path survives restart");
+            check(loaded.isLiked("C:\\Music\\\u0622\u0647\u0646\u06af.flac"),"Unicode liked path survives restart");
             check(!loaded.isLiked(null), "loaded immutable likes also accept no selection");
-            check(loaded.playlists.get(0).name.equals("علاقه‌ها = #1"),"Unicode name survives restart");
+            check(loaded.playlists.get(0).name.equals("\u0639\u0644\u0627\u0642\u0647\u200c\u0647\u0627 = #1"),"Unicode name survives restart");
             check(loaded.playlists.get(0).paths.size()==1,"duplicate add prevented");
             store.rename(id,"Renamed");store.create("Second");
             boolean duplicate=false;try{store.rename(id,"second");}catch(IllegalArgumentException e){duplicate=true;}
             check(duplicate,"duplicate names rejected");
-            check(store.remove(id,"C:\\Music\\آهنگ.flac").playlists.get(0).paths.isEmpty(),"remove track");
-            check(store.toggleLike("C:\\Music\\آهنگ.flac").liked.isEmpty(),"unlike");
+            check(store.remove(id,"C:\\Music\\\u0622\u0647\u0646\u06af.flac").playlists.get(0).paths.isEmpty(),"remove track");
+            check(store.toggleLike("C:\\Music\\\u0622\u0647\u0646\u06af.flac").liked.isEmpty(),"unlike");
             check(store.delete(id).playlists.size()==1,"delete playlist");
             Path broken=root.resolve("broken");Files.writeString(broken,"version=garbage");
             var bad=new UserLibraryStore(broken);boolean failed=false;

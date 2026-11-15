@@ -7,7 +7,7 @@ public final class ArtistNames {
     public static List<String> split(String value) {
         if (value != null && SINGLE_ARTISTS.contains(key(value))) return List.of(value.strip());
         Map<String,String> names = new LinkedHashMap<>();
-        if (value != null) for (String part : value.split("[/,،;؛&＆]+")) {
+        if (value != null) for (String part : value.split("[/,\\u060C;\\u061B&\\uFF06]+")) {
             String name = part.strip().replaceAll("\\s+", " ");
             if (!name.isEmpty()) names.putIfAbsent(key(name), name);
         }

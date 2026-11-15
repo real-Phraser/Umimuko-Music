@@ -19,7 +19,7 @@ public final class MetadataChecks {
             ArtworkStore store = new ArtworkStore(cache);
             var reader = new TrackMetadataReader(store);
             var tagged = reader.read(fixtures.resolve("embedded.flac"));
-            check(tagged.title.equals("آهنگ آزمایشی"), "Unicode title");
+            check(tagged.title.equals("\u0622\u0647\u0646\u06af \u0622\u0632\u0645\u0627\u06cc\u0634\u06cc"), "Unicode title");
             check(tagged.artist.equals("Test Artist") && tagged.album.equals("Test Album"), "artist/album");
             check(tagged.durationMs == 2000, "duration");
             check(tagged.cover != null, "embedded cover");
