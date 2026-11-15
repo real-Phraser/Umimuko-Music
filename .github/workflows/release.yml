@@ -61,7 +61,7 @@ jobs:
         run: ./gradlew check checkDataModels --no-daemon
 
   build:
-    name: Package (${{ matrix.os }})
+    name: Package (${{ matrix.artifact-name }})
     needs: validate
     runs-on: ${{ matrix.os }}
     strategy:
@@ -69,19 +69,46 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact-name: umimuko-music-windows
+            arch: x64
+            artifact-name: umimuko-music-windows-x64
+            build-cmd: .\gradlew.bat packageDistributionForCurrentOS checkDataModels
+            artifact-path: build/compose/binaries/main/*/*.msi
+            extra-artifact-path: build/compose/binaries/main/*/*.exe
+
+          - os: windows-11-arm
+            arch: arm64
+            distribution: zulu
+            artifact-name: umimuko-music-windows-arm64
             build-cmd: .\gradlew.bat packageDistributionForCurrentOS checkDataModels
             artifact-path: build/compose/binaries/main/*/*.msi
             extra-artifact-path: build/compose/binaries/main/*/*.exe
 
           - os: macos-latest
-            artifact-name: umimuko-music-macos
+            arch: arm64
+            artifact-name: umimuko-music-macos-arm64
+            build-cmd: ./gradlew packageDmg checkDataModels
+            artifact-path: build/compose/binaries/main/dmg/*.dmg
+            extra-artifact-path: ''
+
+          - os: macos-latest
+            arch: x64
+            artifact-name: umimuko-music-macos-x64
             build-cmd: ./gradlew packageDmg checkDataModels
             artifact-path: build/compose/binaries/main/dmg/*.dmg
             extra-artifact-path: ''
 
           - os: ubuntu-latest
-            artifact-name: umimuko-music-linux
+            arch: x64
+            artifact-name: umimuko-music-linux-x64
+            build-cmd: ./gradlew packageDistributionForCurrentOS packageArchLinux checkDataModels
+            artifact-path: build/compose/binaries/main/*/*.deb
+            extra-artifact-path: |
+              build/compose/binaries/main/*/*.rpm
+              build/compose/binaries/main/arch/*.pkg.tar.zst
+
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            artifact-name: umimuko-music-linux-arm64
             build-cmd: ./gradlew packageDistributionForCurrentOS packageArchLinux checkDataModels
             artifact-path: build/compose/binaries/main/*/*.deb
             extra-artifact-path: |
@@ -95,8 +122,9 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
-          distribution: 'temurin'
+          distribution: ${{ matrix.distribution || 'temurin' }}
           java-version: 17
+          architecture: ${{ matrix.arch }}
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
@@ -114,6 +142,21 @@ jobs:
 
       - name: Build application packages
         run: ${{ matrix.build-cmd }}
+
+      - name: Add architecture tag to packages
+        shell: bash
+        run: |
+          find build/compose/binaries/main -type f \( -name "*.dmg" -o -name "*.msi" -o -name "*.exe" \) 2>/dev/null | while read -r f; do
+            [ -n "$f" ] || continue
+            fname=$(basename "$f")
+            ext="${fname##*.}"
+            base="${fname%.*}"
+            if [[ "$fname" != *"${{ matrix.arch }}"* ]]; then
+              new_name="${base}-${{ matrix.arch }}.${ext}"
+              mv "$f" "$(dirname "$f")/$new_name"
+              echo "Renamed $fname to $new_name"
+            fi
+          done
 
       - name: Upload packages as build artifact
         uses: actions/upload-artifact@v6
@@ -150,6 +193,7 @@ jobs:
       - name: Download all build artifacts
         uses: actions/download-artifact@v7
         with:
+          pattern: 'umimuko-music-*'
           path: artifacts
           merge-multiple: true
 
@@ -168,7 +212,14 @@ jobs:
         with:
           tag_name: ${{ steps.release_tag.outputs.tag }}
           name: ${{ steps.release_tag.outputs.tag }}
-          files: artifacts/*
+          files: |
+            artifacts/*.msi
+            artifacts/*.exe
+            artifacts/*.dmg
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/*.pkg.tar.zst
+            artifacts/SHA256SUMS.txt
           generate_release_notes: true
           draft: ${{ github.event.inputs.draft == 'true' || inputs.draft == true }}
           prerelease: ${{ github.event.inputs.prerelease == 'true' || inputs.prerelease == true || contains(steps.release_tag.outputs.tag, '-alpha') || contains(steps.release_tag.outputs.tag, '-beta') || contains(steps.release_tag.outputs.tag, '-rc') }}

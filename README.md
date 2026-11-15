@@ -57,10 +57,10 @@
 
 ## 🛒 Download
 
-Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** page and download the package for your operating system:
-- **Windows**: `.msi` or `.exe` installer (bundled with VLC audio engine).
-- **macOS**: `.dmg` package (requires VLC 3.x, available via `brew install --cask vlc` or [videolan.org](https://www.videolan.org)).
-- **Linux**: `.deb`, `.rpm`, or Arch Linux `.pkg.tar.zst` (requires system `vlc` package).
+Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** page and download the package for your operating system and architecture:
+- **Windows** (x64, ARM64): `.msi` or `.exe` installer (bundled with VLC audio engine).
+- **macOS** (Apple Silicon `arm64`, Intel `x64`): `.dmg` package (requires VLC 3.x, available via `brew install --cask vlc` or [videolan.org](https://www.videolan.org)).
+- **Linux** (`x86_64`, `aarch64`): `.deb`, `.rpm`, or Arch Linux `.pkg.tar.zst` (requires system `vlc` package).
 
 ---
 
@@ -69,6 +69,7 @@ Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)**
 JDK 17 is required.
 
 ### macOS & Linux
+Supports macOS (Apple Silicon `arm64` and Intel `x64`) and Linux (`x86_64` and `aarch64`).
 ```bash
 # Run directly
 ./gradlew run
@@ -84,6 +85,7 @@ JDK 17 is required.
 ```
 
 ### Windows
+Supports both 64-bit Windows architectures (x64 and ARM64).
 ```cmd
 # Run directly
 .\gradlew.bat run
@@ -95,7 +97,7 @@ JDK 17 is required.
 .\BUILD-INSTALLERS.cmd
 ```
 
-> **Note for Windows developers:** Building standalone Windows distributions requires VLC 3.x (64-bit). The build script automatically attempts to download it, or you can provide it manually. See [docs/README-VLC-Setup.md](docs/README-VLC-Setup.md) for details.
+> **Note for Windows developers:** Building standalone Windows distributions requires VLC 3.x (64-bit x64 or ARM64). The build script automatically attempts to download it, or you can provide it manually via `-PvlcDir=...` or the `UMIMUKO_VLC_DIR` environment variable. See [docs/README-VLC-Setup.md](docs/README-VLC-Setup.md) for details.
 
 ---
 

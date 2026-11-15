@@ -16,14 +16,21 @@ group = "com.lostf1sh.pixelplayeross"
 version = "0.24.0"
 
 val offlineVlcDir = layout.projectDirectory.dir("vlc")
-val vlcVersion = "3.0.21"
-val vlcSha256 = "a0b7ec02b50adf6417eed014fb8df50af39690505a4225b85b3dc2ed17d14843"
+val isWindowsArm64 = System.getProperty("os.arch")?.lowercase().orEmpty() in listOf("aarch64", "arm64")
+val vlcVersion = providers.gradleProperty("vlcVersion").getOrElse(if (isWindowsArm64) "3.0.22" else "3.0.21")
+val vlcSha256 = providers.gradleProperty("vlcSha256").getOrElse(
+    if (isWindowsArm64) "dc1c1f971a65fc2e7d884fbf18fbd43e17baf413c3e1f0eda6117c3e5668cc40"
+    else "a0b7ec02b50adf6417eed014fb8df50af39690505a4225b85b3dc2ed17d14843"
+)
+val vlcArch = if (isWindowsArm64) "winarm64" else "win64"
 val standaloneVlcDir = layout.projectDirectory.dir(".gradle/vlc/vlc-$vlcVersion")
-val vlcZipFile = layout.projectDirectory.file(".gradle/vlc/vlc-$vlcVersion-win64.zip")
+val vlcZipFile = layout.projectDirectory.file(".gradle/vlc/vlc-$vlcVersion-$vlcArch.zip")
+val IMAGE_FILE_MACHINE_AMD64 = 0x8664
+val IMAGE_FILE_MACHINE_ARM64 = 0xAA64
 
 val downloadBundledVlc by tasks.registering {
     group = "distribution"
-    description = "Ensure standalone 64-bit VLC 3 is cached and ready, independent of any device-installed VLC."
+    description = "Ensure standalone 64-bit VLC 3 (x64 or ARM64) is cached and ready, independent of any device-installed VLC."
     onlyIf {
         System.getProperty("os.name").startsWith("Windows", ignoreCase = true) &&
             !providers.gradleProperty("vlcDir").isPresent &&
@@ -92,14 +99,14 @@ val downloadBundledVlc by tasks.registering {
         val validZip = zipFile.isFile && computeHash(zipFile).equals(vlcSha256, ignoreCase = true)
         if (!validZip) {
             val urls = listOf(
-                "https://get.videolan.org/vlc/$vlcVersion/win64/vlc-$vlcVersion-win64.zip",
-                "https://download.videolan.org/pub/videolan/vlc/$vlcVersion/win64/vlc-$vlcVersion-win64.zip"
+                "https://get.videolan.org/vlc/$vlcVersion/$vlcArch/vlc-$vlcVersion-$vlcArch.zip",
+                "https://download.videolan.org/pub/videolan/vlc/$vlcVersion/$vlcArch/vlc-$vlcVersion-$vlcArch.zip"
             )
             var downloaded = false
             var lastError: Exception? = null
 
             for (url in urls) {
-                logger.lifecycle("Downloading standalone VLC $vlcVersion from $url...")
+                logger.lifecycle("Downloading standalone VLC $vlcVersion ($vlcArch) from $url...")
                 try {
                     downloadUrl(url, zipFile)
                     if (zipFile.isFile) {
@@ -120,7 +127,12 @@ val downloadBundledVlc by tasks.registering {
                 }
             }
             check(downloaded) {
-                "Failed to download standalone VLC $vlcVersion. Check network or pass -PvlcDir=...: ${lastError?.message}"
+                if (isWindowsArm64) {
+                    "Failed to download standalone VLC $vlcVersion for Windows ARM64. " +
+                        "Check network or pass -PvlcDir=... or set UMIMUKO_VLC_DIR: ${lastError?.message}"
+                } else {
+                    "Failed to download standalone VLC $vlcVersion. Check network or pass -PvlcDir=...: ${lastError?.message}"
+                }
             }
         }
 
@@ -157,13 +169,16 @@ val bundledResources = layout.buildDirectory.dir("generated/bundled-resources")
 val windowsAppImage = layout.buildDirectory.dir("compose/binaries/main/app/Umimuko Music")
 val validateBundledVlc by tasks.registering {
     group = "distribution"
-    description = "Bundle a complete 64-bit VLC 3 installation with the Windows app."
+    description = "Bundle a complete 64-bit VLC 3 installation (x64 or ARM64) with the Windows app."
     dependsOn(downloadBundledVlc)
     onlyIf { System.getProperty("os.name").startsWith("Windows", ignoreCase = true) }
     doLast {
-        check(System.getProperty("os.arch") in listOf("amd64", "x86_64")) {
+        val osArch = System.getProperty("os.arch")?.lowercase().orEmpty()
+        check(osArch in listOf("amd64", "x86_64", "aarch64", "arm64")) {
             "Build Umimuko Music using a 64-bit Windows JDK 17."
         }
+        val isArm64 = osArch in listOf("aarch64", "arm64")
+        val expectedMachine = if (isArm64) IMAGE_FILE_MACHINE_ARM64 else IMAGE_FILE_MACHINE_AMD64
         val source = file(vlcSource.get())
         listOf("libvlc.dll", "libvlccore.dll", "plugins").forEach {
             check(source.resolve(it).exists()) {
@@ -176,8 +191,12 @@ val validateBundledVlc by tasks.registering {
             it.seek(pe)
             val signature = Integer.reverseBytes(it.readInt())
             val machine = it.readUnsignedByte() or (it.readUnsignedByte() shl 8)
-            check(signature == 0x4550 && machine == 0x8664) {
-                "VLC must be the 64-bit Windows version."
+            check(signature == 0x4550 && machine == expectedMachine) {
+                if (isArm64) {
+                    "VLC must be the ARM64 Windows version."
+                } else {
+                    "VLC must be the 64-bit Windows version."
+                }
             }
         }
     }
