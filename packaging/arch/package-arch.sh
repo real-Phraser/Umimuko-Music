@@ -38,11 +38,23 @@ else
     echo "makepkg not found (building outside Arch Linux). Packaging tarball with PKGBUILD..."
     PKGVER="$(grep -E '^pkgver=' "$SCRIPT_DIR/PKGBUILD" | cut -d= -f2 | tr -d ' ')"
     PKGREL="$(grep -E '^pkgrel=' "$SCRIPT_DIR/PKGBUILD" | cut -d= -f2 | tr -d ' ')"
-    ARCH_PKG_NAME="umimuko-music-${PKGVER}-${PKGREL}-x86_64.pkg.tar.zst"
+    RAW_ARCH="$(uname -m)"
+    case "$RAW_ARCH" in
+        x86_64|amd64)
+            ARCH="x86_64"
+            ;;
+        aarch64|arm64)
+            ARCH="aarch64"
+            ;;
+        *)
+            ARCH="$RAW_ARCH"
+            ;;
+    esac
+    ARCH_PKG_NAME="umimuko-music-${PKGVER}-${PKGREL}-${ARCH}.pkg.tar.zst"
     if command -v zstd >/dev/null 2>&1; then
         tar --zstd -cf "$OUT_DIR/$ARCH_PKG_NAME" -C "$WORK_DIR" .
     else
-        tar -czf "$OUT_DIR/umimuko-music-${PKGVER}-${PKGREL}.tar.gz" -C "$WORK_DIR" .
+        tar -czf "$OUT_DIR/umimuko-music-${PKGVER}-${PKGREL}-${ARCH}.tar.gz" -C "$WORK_DIR" .
     fi
     echo "Arch package bundle created in $OUT_DIR"
 fi
