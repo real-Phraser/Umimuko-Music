@@ -261,6 +261,8 @@ compose.desktop {
                 iconFile.set(project.file("packaging/umimuko.icns"))
                 bundleID = "com.phraser.umimukomusic"
                 dockName = "Umimuko Music"
+                // macOS jpackage enforces MAJOR > 0 for DMG bundles, so 0.x versions fail validation.
+                // The release workflow normalizes the resulting DMG artifact name to match the project version.
                 packageVersion = "1.0.0"
                 infoPlist {
                     extraKeysRawXml = """

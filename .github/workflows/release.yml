@@ -147,17 +147,25 @@ jobs:
       - name: Build application packages
         run: ${{ matrix.build-cmd }}
 
-      - name: Add architecture tag to packages
+      - name: Add architecture tag and normalize package names
         shell: bash
         run: |
+          VERSION=$(grep '^version = ' build.gradle.kts | head -n1 | cut -d '"' -f2)
           find build/compose/binaries/main -type f \( -name "*.dmg" -o -name "*.msi" -o -name "*.exe" \) 2>/dev/null | while read -r f; do
             [ -n "$f" ] || continue
+            dir=$(dirname "$f")
             fname=$(basename "$f")
             ext="${fname##*.}"
-            base="${fname%.*}"
-            if [[ "$fname" != *"${{ matrix.arch }}"* ]]; then
+            # Normalize DMG placeholder version from 1.0.0 to project version
+            clean_name="${fname//1.0.0/$VERSION}"
+            base="${clean_name%.*}"
+            if [ -n "${{ matrix.arch }}" ] && [[ "$base" != *"${{ matrix.arch }}"* ]]; then
               new_name="${base}-${{ matrix.arch }}.${ext}"
-              mv "$f" "$(dirname "$f")/$new_name"
+            else
+              new_name="${base}.${ext}"
+            fi
+            if [ "$fname" != "$new_name" ]; then
+              mv "$f" "$dir/$new_name"
               echo "Renamed $fname to $new_name"
             fi
           done
