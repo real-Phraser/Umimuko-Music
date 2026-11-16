@@ -30,7 +30,6 @@
 - 🎵 Plays MP3, FLAC, AAC, OGG, WAV and more
 - 📁 Organizes by Albums, Artists, Playlists and Folders
 - 🏠 Home with Pinned, Recently played and Recently added shelves
-- 🎬 Full-screen now playing with fade transition
 - 🪟 Floating mini player that stays on top
 - 🌙 Dark and Light mode
 - 🎨 Album color accent that follows the cover art
