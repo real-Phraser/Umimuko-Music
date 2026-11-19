@@ -110,7 +110,7 @@ fun SettingsDialog(
                     Spacer(Modifier.weight(1f))
 
                     Text(
-                        text = "Umimuko Music v0.24.3",
+                        text = "Umimuko Music v0.25.0",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         modifier = Modifier.padding(horizontal = 12.dp)
@@ -615,7 +615,7 @@ private fun AboutTab() {
         Spacer(Modifier.height(8.dp))
         AppIcon(64.dp, tint = MaterialTheme.colorScheme.primary)
         Text("Umimuko Music", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("Version 0.24.3", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Version 0.25.0", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         Text(
             text = "An ultra-fast, local-first audio player built with Kotlin, JetBrains Compose Desktop, and LibVLC.",

@@ -21,7 +21,7 @@ object LyricsService {
         .connectTimeout(Duration.ofSeconds(6))
         .build()
 
-    private const val USER_AGENT = "UmimukoMusic/0.24.3 ( https://github.com/real-Phraser )"
+    private const val USER_AGENT = "UmimukoMusic/0.25.0 ( https://github.com/real-Phraser )"
     private val memoryCache = ConcurrentHashMap<String, LrcLyrics>()
 
     suspend fun getLyrics(song: DesktopSong): LrcLyrics {
