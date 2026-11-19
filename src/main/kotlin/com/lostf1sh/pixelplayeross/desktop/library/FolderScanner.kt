@@ -33,10 +33,26 @@ class FolderScanner {
                     val path = file.toAbsolutePath().normalize().toString()
                     val tags = metadata.read(file)
                     checkCancellation()
-                    songs += DesktopSong(path, tags.title.ifBlank { name.substringBeforeLast('.') },
-                        path, extension.uppercase(Locale.ROOT), attrs.size(), tags.artist, tags.album,
-                        tags.durationMs, tags.cover?.path, tags.cover?.accent, tags.albumArtist,
-                        tags.discNumber, tags.trackNumber)
+                    val dateAdded = try { attrs.creationTime().toMillis() } catch (_: Throwable) { attrs.lastModifiedTime().toMillis() }
+                    songs += DesktopSong(
+                        id = path,
+                        title = tags.title.ifBlank { name.substringBeforeLast('.') },
+                        path = path,
+                        format = extension.uppercase(Locale.ROOT),
+                        sizeBytes = attrs.size(),
+                        artist = tags.artist,
+                        album = tags.album,
+                        durationMs = tags.durationMs,
+                        coverPath = tags.cover?.path,
+                        accentArgb = tags.cover?.accent,
+                        albumArtist = tags.albumArtist,
+                        discNumber = tags.discNumber,
+                        trackNumber = tags.trackNumber,
+                        year = tags.year,
+                        genre = tags.genre,
+                        dateAdded = dateAdded,
+                        lyrics = tags.lyrics,
+                    )
                 }
                 return FileVisitResult.CONTINUE
             }
