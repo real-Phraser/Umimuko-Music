@@ -59,7 +59,7 @@
 
 Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)** page and download the package for your operating system and architecture:
 - **Windows** (x64, ARM64): `.msi` or `.exe` installer (bundled with VLC audio engine).
-- **macOS** (Apple Silicon `arm64`, Intel `x64`): `.dmg` package (requires VLC 3.x, available via `brew install --cask vlc` or [videolan.org](https://www.videolan.org)).
+- **macOS** (Apple Silicon `arm64`): `.dmg` package (requires VLC 3.x, available via `brew install --cask vlc` or [videolan.org](https://www.videolan.org)).
 - **Linux** (`x86_64`, `aarch64`): `.deb`, `.rpm`, or Arch Linux `.pkg.tar.zst` (requires system `vlc` package).
 
 ---
@@ -69,7 +69,7 @@ Go to the **[Releases](https://github.com/real-Phraser/umimuko-music/releases)**
 JDK 17 is required.
 
 ### macOS & Linux
-Supports macOS (Apple Silicon `arm64` and Intel `x64`) and Linux (`x86_64` and `aarch64`).
+Supports macOS (Apple Silicon `arm64`) and Linux (`x86_64` and `aarch64`).
 ```bash
 # Run directly
 ./gradlew run

@@ -94,13 +94,6 @@ jobs:
             artifact-path: build/compose/binaries/main/dmg/*.dmg
             extra-artifact-path: ''
 
-          - os: macos-latest
-            arch: x64
-            artifact-name: umimuko-music-macos-x64
-            build-cmd: ./gradlew packageDmg checkDataModels
-            artifact-path: build/compose/binaries/main/dmg/*.dmg
-            extra-artifact-path: ''
-
           - os: ubuntu-latest
             arch: x64
             artifact-name: umimuko-music-linux-x64
