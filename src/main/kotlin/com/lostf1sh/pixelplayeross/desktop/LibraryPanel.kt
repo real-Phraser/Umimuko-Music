@@ -266,7 +266,21 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                     if(!wide) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                         LibraryTab.entries.forEach { item ->
-                            FilterChip(selected=tab==item,onClick={navigate(item)},label={Text(item.title)})
+                            val selected = tab == item
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                                modifier = Modifier.clickable { navigate(item) }
+                            ) {
+                                Text(
+                                    item.title,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {

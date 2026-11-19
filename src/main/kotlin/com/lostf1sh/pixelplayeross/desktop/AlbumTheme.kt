@@ -18,6 +18,8 @@ fun albumColorScheme(dark: Boolean, accentArgb: Int?): ColorScheme {
     val surface = tone(neutralSaturation, if (dark) .11f else .97f)
     val variant = tone(neutralSaturation, if (dark) .17f else .91f)
     val container = tone(hsv[1].coerceAtMost(.32f), if (dark) .24f else .88f)
+    val outline = tone(neutralSaturation, if (dark) .40f else .75f)
+    val outlineVariant = tone(neutralSaturation, if (dark) .25f else .85f)
     val base = if (dark) darkColorScheme() else lightColorScheme()
     return base.copy(
         primary = primary, onPrimary = contrastingText(primary),
@@ -27,6 +29,7 @@ fun albumColorScheme(dark: Boolean, accentArgb: Int?): ColorScheme {
         surface = surface, onSurface = contrastingText(surface),
         surfaceVariant = variant, onSurfaceVariant = contrastingText(variant).copy(alpha = .82f),
         secondaryContainer = container, onSecondaryContainer = contrastingText(container),
+        outline = outline, outlineVariant = outlineVariant,
     )
 }
 
