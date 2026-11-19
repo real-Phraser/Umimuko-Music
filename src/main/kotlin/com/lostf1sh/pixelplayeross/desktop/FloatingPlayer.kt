@@ -50,7 +50,7 @@ fun FloatingPlayer(applicationScope:ApplicationScope,audio:AudioController,onRes
             resizable = false,
             alwaysOnTop = true,
             focusable = false,
-            icon = painterResource("branding/app-icon.png")
+            icon = painterResource("branding/window-icon.png")
         ) {
             val awtBg = remember(colors.surfaceVariant) {
                 val argb = colors.surfaceVariant.value.toLong()

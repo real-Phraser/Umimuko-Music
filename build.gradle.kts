@@ -230,12 +230,14 @@ compose.desktop {
         }
         mainClass = "com.lostf1sh.pixelplayeross.desktop.MainKt"
         if (System.getProperty("os.name").startsWith("Mac", ignoreCase = true)) {
+            val macIcon = project.file("packaging/umimuko.icns")
+            val iconArgs = if (macIcon.exists()) listOf("-Xdock:icon=${macIcon.absolutePath}") else emptyList()
             jvmArgs += listOf(
                 "-Dapple.awt.application.name=Umimuko Music",
                 "-Xdock:name=Umimuko Music",
                 "-Dapple.awt.application.appearance=system",
                 "-Dapple.laf.useScreenMenuBar=true"
-            )
+            ) + iconArgs
         }
         nativeDistributions {
             targetFormats(
@@ -263,11 +265,9 @@ compose.desktop {
                 dockName = "Umimuko Music"
                 // macOS jpackage enforces MAJOR > 0 for DMG bundles, so 0.x versions fail validation.
                 // The release workflow normalizes the resulting DMG artifact name to match the project version.
-                packageVersion = "1.0.0"
+                packageVersion = "1.0.2"
                 infoPlist {
                     extraKeysRawXml = """
-                        <key>CFBundleName</key>
-                        <string>Umimuko Music</string>
                         <key>CFBundleDisplayName</key>
                         <string>Umimuko Music</string>
                         <key>NSRequiresAquaSystemAppearance</key>
@@ -377,7 +377,15 @@ tasks.withType<JavaExec>().configureEach {
             systemProperty("apple.awt.application.name", "Umimuko Music")
             systemProperty("apple.awt.application.appearance", "system")
             systemProperty("apple.laf.useScreenMenuBar", "true")
-            jvmArgs("-Xdock:name=Umimuko Music", "-Dapple.awt.application.name=Umimuko Music")
+            val macIcon = project.file("packaging/umimuko.icns")
+            val jvmArgList = mutableListOf(
+                "-Xdock:name=Umimuko Music",
+                "-Dapple.awt.application.name=Umimuko Music"
+            )
+            if (macIcon.exists()) {
+                jvmArgList.add("-Xdock:icon=${macIcon.absolutePath}")
+            }
+            jvmArgs(jvmArgList)
         }
     }
 }

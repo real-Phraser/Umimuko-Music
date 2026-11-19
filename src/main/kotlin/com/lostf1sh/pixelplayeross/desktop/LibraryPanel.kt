@@ -576,7 +576,7 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
         // Borderless maximized avoids exclusive full-screen capture restrictions on Windows.
         val playerWindowState=rememberWindowState(placement=WindowPlacement.Maximized)
         with(applicationScope) { Window(onCloseRequest={queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)},state=playerWindowState,
-            title="Umimuko Music · Now Playing",icon=painterResource("branding/app-icon.png"),undecorated=true,transparent=true,
+            title="Umimuko Music · Now Playing",icon=painterResource("branding/window-icon.png"),undecorated=true,transparent=true,
             onPreviewKeyEvent={event ->
                 if(event.type==KeyEventType.KeyDown && event.key==Key.Escape) {
                     queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false);true

@@ -24,6 +24,9 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
 import java.awt.Dimension
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
 import com.lostf1sh.pixelplayeross.desktop.library.PlatformPaths
 import com.lostf1sh.pixelplayeross.desktop.playback.AudioController
 import com.lostf1sh.pixelplayeross.desktop.playback.RepeatMode
@@ -34,6 +37,19 @@ fun main() {
     if (PlatformPaths.isMac()) {
         System.setProperty("apple.awt.application.appearance", "system")
         System.setProperty("apple.laf.useScreenMenuBar", "true")
+        try {
+            if (java.awt.Taskbar.isTaskbarSupported()) {
+                val taskbar = java.awt.Taskbar.getTaskbar()
+                if (taskbar.isSupported(java.awt.Taskbar.Feature.ICON_IMAGE)) {
+                    val stream = Thread.currentThread().contextClassLoader?.getResourceAsStream("branding/window-icon.png")
+                        ?: Unit.javaClass.classLoader?.getResourceAsStream("branding/window-icon.png")
+                    val img = stream?.use { ImageIO.read(it) }
+                    if (img != null) {
+                        taskbar.iconImage = img
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
     }
     if (PlatformPaths.isWindows()) {
         System.setProperty("skiko.rendering.windows.direct3DSynchronousLiveResize", "true")
@@ -68,8 +84,11 @@ fun main() {
     }
     var fullPlayer by remember {mutableStateOf(false)}
     Window(onCloseRequest=::exitApplication,title="Umimuko Music",state=state,
-        icon=painterResource("branding/app-icon.png")) {
+        icon=painterResource("branding/window-icon.png")) {
         window.minimumSize=Dimension(760,600)
+        if (appIconImages.isNotEmpty()) {
+            window.iconImages = appIconImages
+        }
         val initialDark = if (StartupPrefs.followSystemTheme) androidx.compose.foundation.isSystemInDarkTheme() else StartupPrefs.darkMode
         val initialPalette = albumColorScheme(initialDark, null)
         val initialBg = java.awt.Color(
@@ -88,6 +107,9 @@ fun main() {
 
         // On macOS, ensure window placement respects the macOS menu bar insets
         LaunchedEffect(window) {
+            if (appIconImages.isNotEmpty()) {
+                window.iconImages = appIconImages
+            }
             if (PlatformPaths.isMac()) {
                 window.rootPane.putClientProperty("apple.awt.fullscreenable", true)
                 val insets = java.awt.Toolkit.getDefaultToolkit().getScreenInsets(window.graphicsConfiguration)
@@ -111,11 +133,73 @@ fun main() {
 }
 }
 
+private val appIconImages: List<java.awt.Image> by lazy {
+    try {
+        val stream = Thread.currentThread().contextClassLoader?.getResourceAsStream("branding/window-icon.png")
+            ?: Unit.javaClass.classLoader?.getResourceAsStream("branding/window-icon.png")
+            ?: Thread.currentThread().contextClassLoader?.getResourceAsStream("branding/app-icon.png")
+        val base = stream?.use { ImageIO.read(it) }
+        if (base != null) {
+            val targetSizes = intArrayOf(16, 20, 24, 32, 40, 48, 64, 96, 128, 256)
+            val list = ArrayList<java.awt.Image>(targetSizes.size + 1)
+            for (size in targetSizes) {
+                list.add(scaleIconImage(base, size))
+            }
+            list.add(base)
+            list
+        } else {
+            emptyList()
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
+private fun scaleIconImage(src: BufferedImage, targetSize: Int): BufferedImage {
+    var current = src
+    var currentW = src.width
+    var currentH = src.height
+
+    while (currentW > targetSize * 2 || currentH > targetSize * 2) {
+        val nextW = maxOf(targetSize, currentW / 2)
+        val nextH = maxOf(targetSize, currentH / 2)
+        val step = BufferedImage(nextW, nextH, BufferedImage.TYPE_INT_ARGB)
+        val g = step.createGraphics()
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g.drawImage(current, 0, 0, nextW, nextH, null)
+        } finally {
+            g.dispose()
+        }
+        current = step
+        currentW = nextW
+        currentH = nextH
+    }
+
+    val finalImg = BufferedImage(targetSize, targetSize, BufferedImage.TYPE_INT_ARGB)
+    val g = finalImg.createGraphics()
+    try {
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC)
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g.drawImage(current, 0, 0, targetSize, targetSize, null)
+    } finally {
+        g.dispose()
+    }
+    return finalImg
+}
+
 @Composable
-fun AppIcon(size:Dp=42.dp,tint:Color=Color.White) {
+fun AppIcon(size: Dp = 42.dp, tint: Color = Color.White) {
     // The mark is a white, transparent image; tint it for the surface it sits on (white by default).
-    Image(painterResource("branding/app-icon.png"),contentDescription="Umimuko Music",
-        modifier=Modifier.size(size),colorFilter=ColorFilter.tint(tint))
+    Image(
+        painterResource("branding/app-icon.png"),
+        contentDescription = "Umimuko Music",
+        modifier = Modifier.size(size),
+        colorFilter = ColorFilter.tint(tint)
+    )
 }
 
 @Composable
