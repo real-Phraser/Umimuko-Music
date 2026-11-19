@@ -145,4 +145,18 @@ class BrandingTest {
         }
         return finalImg
     }
+
+    @Test
+    fun testAllRegisteredMaterialSymbolsExistOnClasspath() {
+        val names = listOf(
+            "play", "pause", "next", "previous", "search", "music", "levels",
+            "folder", "library", "volume", "muted", "settings",
+            "home", "pin", "unpin", "drag", "remove", "up", "down", "bubble", "restore", "close", "info", "lyrics",
+            "album", "artist", "playlist", "playlist_add", "liked", "heart", "add", "back", "more", "queue", "expand", "collapse", "shuffle", "repeat", "repeat_one"
+        )
+        for (name in names) {
+            val res = javaClass.classLoader.getResource("icons/material-rounded/$name.svg")
+            assertNotNull(res, "Missing SVG resource for Material Symbol: $name")
+        }
+    }
 }
