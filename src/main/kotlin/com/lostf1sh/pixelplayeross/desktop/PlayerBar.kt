@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +34,9 @@ fun trackClock(ms: Long): String {
 @Composable
 fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
     onLike:()->Unit,onAdd:()->Unit,onQueue:()->Unit,onExpand:()->Unit,onCollapse:()->Unit={},
+    onEqualizer:()->Unit={},
+    onSleepTimer:()->Unit={},
+    sleepTimerState: com.lostf1sh.pixelplayeross.desktop.system.SleepTimerState? = null,
     isCompact:Boolean=false) {
     val state by audio.state.collectAsState()
     var preview by remember(state.song?.id) {mutableStateOf<Float?>(null)}
@@ -88,6 +92,30 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                         SmallPlayerButton(if(liked)"heart" else "liked",if(liked)"Unlike current track" else "Like current track",
                             editable && state.song!=null,onLike)
                         SmallPlayerButton("playlist_add","Add current track to playlist",editable && state.song!=null,onAdd)
+                        SmallPlayerButton("levels","Audio DSP & Equalizer",true,onEqualizer)
+                        if (sleepTimerState?.isActive == true) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.clickable(onClick = onSleepTimer)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Glyph("timer", MaterialTheme.colorScheme.primary, Modifier.size(14.dp))
+                                    Text(
+                                        com.lostf1sh.pixelplayeross.desktop.system.SleepTimer.formatRemaining(sleepTimerState.remainingSeconds),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        } else {
+                            SmallPlayerButton("timer", "Sleep Timer", true, onSleepTimer)
+                        }
                         SmallPlayerButton("queue","Open playback queue",true,onQueue)
                         SmallPlayerButton("bubble","Collapse to floating player",true,onCollapse)
                         SmallPlayerButton("expand","Open full-screen player",state.song!=null,onExpand)
