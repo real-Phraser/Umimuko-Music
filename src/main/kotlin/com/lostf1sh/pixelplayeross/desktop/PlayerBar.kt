@@ -32,15 +32,16 @@ fun trackClock(ms: Long): String {
  */
 @Composable
 fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
-    onLike:()->Unit,onAdd:()->Unit,onQueue:()->Unit,onExpand:()->Unit,onCollapse:()->Unit={}) {
+    onLike:()->Unit,onAdd:()->Unit,onQueue:()->Unit,onExpand:()->Unit,onCollapse:()->Unit={},
+    isCompact:Boolean=false) {
     val state by audio.state.collectAsState()
     var preview by remember(state.song?.id) {mutableStateOf<Float?>(null)}
     var volumePreview by remember {mutableStateOf<Float?>(null)}
     val progress=if(state.duration>0)(state.time.toDouble()/state.duration).toFloat().coerceIn(0f,1f) else 0f
     val colors=MaterialTheme.colorScheme
     Surface(color=colors.surfaceVariant,tonalElevation=4.dp) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val compact=maxWidth<900.dp
+        Box(Modifier.fillMaxWidth()) {
+            val compact = isCompact
             Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp)) {
                 state.error?.let {Text(it,color=colors.error,maxLines=2,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall)}
                 Row(Modifier.fillMaxWidth().height(72.dp),verticalAlignment=Alignment.CenterVertically,

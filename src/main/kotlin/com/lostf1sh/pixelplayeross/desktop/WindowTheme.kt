@@ -32,13 +32,18 @@ object WindowTheme {
 
     /** Returns true when the colors were applied (or there is nothing to do on this system). */
     fun apply(window: java.awt.Window, dark: Boolean, background: Color, text: Color): Boolean {
+        val awtBg = java.awt.Color((background.red * 255).toInt(), (background.green * 255).toInt(), (background.blue * 255).toInt())
+        window.background = awtBg
+        if (window is javax.swing.RootPaneContainer) {
+            window.rootPane?.background = awtBg
+            window.contentPane?.background = awtBg
+            window.contentPane?.components?.forEach { it.background = awtBg }
+        }
         if (PlatformPaths.isMac()) {
             return try {
                 val rootPane = (window as? javax.swing.RootPaneContainer)?.rootPane
                 val appearance = if (dark) "NSAppearanceNameDarkAqua" else "NSAppearanceNameAqua"
                 rootPane?.putClientProperty("apple.awt.windowAppearance", appearance)
-                rootPane?.repaint()
-                window.repaint()
                 true
             } catch (e: Throwable) {
                 false

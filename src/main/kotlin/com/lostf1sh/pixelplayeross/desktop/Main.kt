@@ -18,6 +18,8 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
@@ -34,6 +36,7 @@ fun main() {
         System.setProperty("apple.laf.useScreenMenuBar", "true")
     }
     if (PlatformPaths.isWindows()) {
+        System.setProperty("skiko.rendering.windows.direct3DSynchronousLiveResize", "true")
         WindowsMediaSession.configureProcess()
     }
     IntroState.active.value=StartupPrefs.introEnabled
@@ -53,10 +56,12 @@ fun main() {
                 }
             }
         }
+        @OptIn(kotlinx.coroutines.FlowPreview::class)
         launch {
-            snapshotFlow {state.size}.collect {size->
-                if(state.placement==WindowPlacement.Floating && size.width>=760.dp && size.height>=600.dp) {
-                    StartupPrefs.windowWidth=size.width.value.toInt();StartupPrefs.windowHeight=size.height.value.toInt()
+            snapshotFlow { state.size }.debounce(400).collect { size ->
+                if (state.placement == WindowPlacement.Floating && size.width >= 760.dp && size.height >= 600.dp) {
+                    StartupPrefs.windowWidth = size.width.value.toInt()
+                    StartupPrefs.windowHeight = size.height.value.toInt()
                 }
             }
         }
@@ -65,6 +70,18 @@ fun main() {
     Window(onCloseRequest=::exitApplication,title="Umimuko Music",state=state,
         icon=painterResource("branding/app-icon.png")) {
         window.minimumSize=Dimension(760,600)
+        val initialDark = if (StartupPrefs.followSystemTheme) androidx.compose.foundation.isSystemInDarkTheme() else StartupPrefs.darkMode
+        val initialPalette = albumColorScheme(initialDark, null)
+        val initialBg = java.awt.Color(
+            (initialPalette.background.red * 255).toInt(),
+            (initialPalette.background.green * 255).toInt(),
+            (initialPalette.background.blue * 255).toInt()
+        )
+        window.background = initialBg
+        window.rootPane.background = initialBg
+        window.contentPane.background = initialBg
+        window.contentPane.components.forEach { it.background = initialBg }
+
         if (PlatformPaths.isMac()) {
             window.rootPane.putClientProperty("apple.awt.fullscreenable", true)
         }
@@ -74,14 +91,14 @@ fun main() {
             if (PlatformPaths.isMac()) {
                 window.rootPane.putClientProperty("apple.awt.fullscreenable", true)
                 val insets = java.awt.Toolkit.getDefaultToolkit().getScreenInsets(window.graphicsConfiguration)
-                if (window.y < insets.top) {
-                    window.setLocation(window.x, insets.top)
+                val topInset = insets.top
+                if (window.y < topInset) {
+                    window.setLocation(window.x, topInset)
                 }
                 window.addComponentListener(object : java.awt.event.ComponentAdapter() {
                     override fun componentMoved(e: java.awt.event.ComponentEvent) {
-                        val curInsets = java.awt.Toolkit.getDefaultToolkit().getScreenInsets(window.graphicsConfiguration)
-                        if (window.isShowing && window.y < curInsets.top) {
-                            window.setLocation(window.x, curInsets.top)
+                        if (window.isShowing && window.y < topInset) {
+                            window.setLocation(window.x, topInset)
                         }
                     }
                 })
@@ -148,6 +165,10 @@ private fun FrameWindowScope.DesktopApp(
     var introEnabled by remember { mutableStateOf(StartupPrefs.introEnabled) }
     var showIntro by remember { mutableStateOf(IntroState.active.value) }
     var albumAccent by remember { mutableStateOf<Int?>(null) }
+    val isWide by remember(windowState) { derivedStateOf { windowState.size.width >= 1000.dp } }
+    val isCompact by remember(windowState) { derivedStateOf { windowState.size.width < 900.dp } }
+    val onPlayerCollapsedChange = remember { { it: Boolean -> playerCollapsed = it } }
+    val onAlbumAccentChange = remember { { it: Int? -> albumAccent = it } }
     val colors = remember(dark, dynamic, albumAccent) { albumColorScheme(dark, if (dynamic) albumAccent else null) }
     val audio = remember { AudioController() }
     DisposableEffect(audio) { onDispose { audio.close() } }
@@ -415,7 +436,18 @@ private fun FrameWindowScope.DesktopApp(
                         }
                     }
                 }
-                LibraryPanel(applicationScope,parent,fullPlayer,onFullPlayer,playerCollapsed,{playerCollapsed=it},audio) {albumAccent=it}
+                LibraryPanel(
+                    applicationScope,
+                    parent,
+                    fullPlayer,
+                    onFullPlayer,
+                    playerCollapsed,
+                    onPlayerCollapsedChange,
+                    audio,
+                    isWide = isWide,
+                    isCompact = isCompact,
+                    onAlbumAccent = onAlbumAccentChange
+                )
             }
             if(showIntro) StartupIntro {showIntro=false;IntroState.active.value=false}
             }

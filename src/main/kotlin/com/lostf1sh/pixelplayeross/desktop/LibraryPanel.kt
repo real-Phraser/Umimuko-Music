@@ -65,7 +65,7 @@ private data class LibraryRoute(val tab:LibraryTab,val selected:String?,val quer
 private data class PlaybackSummary(val ready: Boolean=false, val song: DesktopSong?=null, val playing: Boolean=false)
 
 @Composable
-fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlayer: Boolean, onFullPlayer: (Boolean) -> Unit, playerCollapsed:Boolean, onPlayerCollapsed:(Boolean)->Unit, audioController: AudioController? = null, onAlbumAccent: (Int?) -> Unit) {
+fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlayer: Boolean, onFullPlayer: (Boolean) -> Unit, playerCollapsed:Boolean, onPlayerCollapsed:(Boolean)->Unit, audioController: AudioController? = null, isWide: Boolean = true, isCompact: Boolean = false, onAlbumAccent: (Int?) -> Unit) {
     val appColors=MaterialTheme.colorScheme
     val queuePalette=remember(appColors){queueColorScheme(appColors)}
     val fullscreenQueuePalette=remember(appColors){queueColorScheme(fullPlayerColorScheme(appColors.primary.toArgb()))}
@@ -245,14 +245,16 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
     val text=query.trim()
     fun matches(song: DesktopSong) = text.isEmpty() || song.title.contains(text,true) ||
         song.artist.contains(text,true) || song.album.contains(text,true) || song.path.contains(text,true)
-    val tracks=baseTracks.filter { matches(it) }
-    val visibleGroups=groups.filter { text.isEmpty() || it.title.contains(text,true) ||
-        it.subtitle.contains(text,true) || it.songs.any { track -> matches(track) } }
+    val tracks=remember(baseTracks, text) { baseTracks.filter { matches(it) } }
+    val visibleGroups=remember(groups, text) {
+        groups.filter { text.isEmpty() || it.title.contains(text,true) ||
+            it.subtitle.contains(text,true) || it.songs.any { track -> matches(track) } }
+    }
     val title=detail?.title ?: tab.title
     val countInHeader=detail==null && (tab==LibraryTab.Tracks || tab==LibraryTab.Albums || tab==LibraryTab.Artists)
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide=maxWidth>=1000.dp
+    Box(Modifier.fillMaxSize()) {
+        val wide = isWide
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 if(wide) Column(Modifier.width(190.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -509,7 +511,8 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                 editable=loaded && !saving,
                 onLike={playback.song?.let { song -> mutate({store.toggleLike(song.id)}) }},
                 onAdd={adding=playback.song}, onQueue={queueOpen=true},onExpand={onFullPlayer(true)},
-                onCollapse={onPlayerCollapsed(true)})
+                onCollapse={onPlayerCollapsed(true)},
+                isCompact=isCompact)
             }
         }
         if(PlatformPaths.isLinux()) {
