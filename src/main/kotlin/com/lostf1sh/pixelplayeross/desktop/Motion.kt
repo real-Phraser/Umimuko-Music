@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.prefs.Preferences
@@ -44,9 +45,15 @@ object StartupPrefs {
     var introEnabled: Boolean
         get() = try { node.getBoolean("startupAnimation", true) } catch (e: Exception) { true }
         set(value) { try { node.putBoolean("startupAnimation", value) } catch (e: Exception) {} }
+
+    val followSystemThemeFlow = MutableStateFlow(try { node.getBoolean("followSystemTheme", true) } catch (e: Exception) { true })
+
     var followSystemTheme: Boolean
         get() = try { node.getBoolean("followSystemTheme", true) } catch (e: Exception) { true }
-        set(value) { try { node.putBoolean("followSystemTheme", value) } catch (e: Exception) {} }
+        set(value) {
+            try { node.putBoolean("followSystemTheme", value) } catch (e: Exception) {}
+            followSystemThemeFlow.value = value
+        }
     var darkMode: Boolean
         get() = try { node.getBoolean("darkMode", true) } catch (e: Exception) { true }
         set(value) { try { node.putBoolean("darkMode", value) } catch (e: Exception) {} }
@@ -59,6 +66,40 @@ object StartupPrefs {
     var windowHeight: Int
         get() = try { node.getInt("windowHeight", 800) } catch (e: Exception) { 800 }
         set(value) { try { node.putInt("windowHeight", value) } catch (e: Exception) {} }
+    var themePreset: String
+        get() = try { node.get("themePreset", "dynamic") } catch (e: Exception) { "dynamic" }
+        set(value) { try { node.put("themePreset", value) } catch (e: Exception) {} }
+    var minimizeToTray: Boolean
+        get() = try { node.getBoolean("minimizeToTray", false) } catch (e: Exception) { false }
+        set(value) { try { node.putBoolean("minimizeToTray", value) } catch (e: Exception) {} }
+    var closeToTray: Boolean
+        get() = try { node.getBoolean("closeToTray", false) } catch (e: Exception) { false }
+        set(value) { try { node.putBoolean("closeToTray", value) } catch (e: Exception) {} }
+
+    // Audio DSP & Equalizer Persistence
+    var eqEnabled: Boolean
+        get() = try { node.getBoolean("eqEnabled", false) } catch (e: Exception) { false }
+        set(value) { try { node.putBoolean("eqEnabled", value) } catch (e: Exception) {} }
+
+    var eqPreset: String
+        get() = try { node.get("eqPreset", "Flat") } catch (e: Exception) { "Flat" }
+        set(value) { try { node.put("eqPreset", value) } catch (e: Exception) {} }
+
+    var eqPreamp: Float
+        get() = try { node.getFloat("eqPreamp", 0.0f) } catch (e: Exception) { 0.0f }
+        set(value) { try { node.putFloat("eqPreamp", value) } catch (e: Exception) {} }
+
+    var eqCustomBands: String
+        get() = try { node.get("eqCustomBands", "0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0") } catch (e: Exception) { "0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0" }
+        set(value) { try { node.put("eqCustomBands", value) } catch (e: Exception) {} }
+
+    var playbackSpeed: Float
+        get() = try { node.getFloat("playbackSpeed", 1.0f) } catch (e: Exception) { 1.0f }
+        set(value) { try { node.putFloat("playbackSpeed", value) } catch (e: Exception) {} }
+
+    var crossfadeDuration: Float
+        get() = try { node.getFloat("crossfadeDuration", 0.0f) } catch (e: Exception) { 0.0f }
+        set(value) { try { node.putFloat("crossfadeDuration", value) } catch (e: Exception) {} }
 }
 
 /**

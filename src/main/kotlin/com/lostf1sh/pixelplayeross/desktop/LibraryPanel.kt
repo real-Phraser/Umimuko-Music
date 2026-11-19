@@ -36,6 +36,11 @@ import androidx.compose.ui.unit.dp
 import com.lostf1sh.pixelplayeross.desktop.library.*
 import com.lostf1sh.pixelplayeross.desktop.playback.AudioController
 import com.lostf1sh.pixelplayeross.desktop.playback.PlatformMediaSession
+import com.lostf1sh.pixelplayeross.desktop.theme.ThemeManager
+import com.lostf1sh.pixelplayeross.desktop.ui.DuplicatesDialog
+import com.lostf1sh.pixelplayeross.desktop.ui.EqualizerDialog
+import com.lostf1sh.pixelplayeross.desktop.ui.SleepTimerDialog
+import com.lostf1sh.pixelplayeross.desktop.ui.TagEditorDialog
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -65,10 +70,28 @@ private data class LibraryRoute(val tab:LibraryTab,val selected:String?,val quer
 private data class PlaybackSummary(val ready: Boolean=false, val song: DesktopSong?=null, val playing: Boolean=false)
 
 @Composable
-fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlayer: Boolean, onFullPlayer: (Boolean) -> Unit, playerCollapsed:Boolean, onPlayerCollapsed:(Boolean)->Unit, audioController: AudioController? = null, onAlbumAccent: (Int?) -> Unit) {
+fun LibraryPanel(
+    applicationScope: ApplicationScope,
+    parent: Component,
+    fullPlayer: Boolean,
+    onFullPlayer: (Boolean) -> Unit,
+    playerCollapsed: Boolean,
+    onPlayerCollapsed: (Boolean) -> Unit,
+    audioController: AudioController? = null,
+    isWide: Boolean = true,
+    isCompact: Boolean = false,
+    onAlbumAccent: (Int?) -> Unit,
+    sleepTimer: com.lostf1sh.pixelplayeross.desktop.system.SleepTimer? = null,
+    duplicatesOpen: Boolean = false,
+    onDuplicatesOpenChange: (Boolean) -> Unit = {},
+    onLibraryStatsChanged: (folders: List<String>, totalTracks: Int) -> Unit = { _, _ -> },
+    onRegisterFolderActions: (addFolder: () -> Unit, removeFolder: (String) -> Unit) -> Unit = { _, _ -> }
+) {
     val appColors=MaterialTheme.colorScheme
     val queuePalette=remember(appColors){queueColorScheme(appColors)}
     val fullscreenQueuePalette=remember(appColors){queueColorScheme(fullPlayerColorScheme(appColors.primary.toArgb()))}
+    val timerState = sleepTimer?.state?.collectAsState()?.value
+    var sleepTimerOpen by remember { mutableStateOf(false) }
     var songs by remember { mutableStateOf<List<DesktopSong>>(emptyList()) }
     var folderSets by remember { mutableStateOf<Map<String,List<DesktopSong>>>(emptyMap()) }
     var folderMenu by remember { mutableStateOf(false) }
@@ -93,6 +116,16 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
     var queueToSave by remember {mutableStateOf<List<DesktopSong>?>(null)}
     var adding by remember { mutableStateOf<DesktopSong?>(null) }
     var deleting by remember { mutableStateOf<String?>(null) }
+    var equalizerOpen by remember { mutableStateOf(false) }
+    var editingSong by remember { mutableStateOf<DesktopSong?>(null) }
+    var internalDuplicatesOpen by remember { mutableStateOf(false) }
+    val isDuplicatesOpen = duplicatesOpen || internalDuplicatesOpen
+    val setDuplicatesOpen: (Boolean) -> Unit = { open ->
+        internalDuplicatesOpen = open
+        onDuplicatesOpenChange(open)
+    }
+    var sortOption by remember { mutableStateOf(SortOption(SortField.TITLE, SortOrder.ASCENDING)) }
+    var sortMenuOpen by remember { mutableStateOf(false) }
     val pageMotion = remember(tab,selected) { Animatable(0f) }
     LaunchedEffect(pageMotion) { pageMotion.animateTo(1f,tween(200)) }
     val scope = rememberCoroutineScope()
@@ -210,6 +243,70 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
         if(album!=null){queueOpen=false;onFullPlayer(false);openDetail(LibraryTab.Albums,album.id)}
         else message="This album is not available in the current library."
     }
+
+    val triggerAddFolder: () -> Unit = {
+        if (!busy && folderStoreReady) {
+            busy = true
+            error = null
+            job = scope.launch {
+                try {
+                    val path = chooseMusicFolder(parent) ?: return@launch
+                    scanning = true
+                    val result = withContext(Dispatchers.IO) {
+                        val context = currentCoroutineContext()
+                        scanner.scan(path) { context.ensureActive() }
+                    }
+                    val key = path.toAbsolutePath().normalize().toString()
+                    val old = folderSets.keys.firstOrNull { it.equals(key, ignoreCase = true) }
+                    val updated = folderSets.toMutableMap().apply { if (old != null) remove(old); put(key, result.songs) }
+                    withContext(Dispatchers.IO) { folderStore.save(updated.keys) }
+                    folderSets = updated
+                    songs = merged(updated)
+                    message = if (result.unreadableEntries > 0) "Skipped ${result.unreadableEntries} unreadable entries." else null
+                } catch (cancelled: CancellationException) {
+                    message = "Scan cancelled; previous library kept."
+                    throw cancelled
+                } catch (failure: Exception) {
+                    error = "Could not read folder: ${failure.message}"
+                } finally {
+                    scanning = false
+                    busy = false
+                }
+            }
+        }
+    }
+
+    val triggerRemoveFolder: (String) -> Unit = { folder ->
+        if (!busy) {
+            busy = true
+            scope.launch {
+                try {
+                    val updated = folderSets - folder
+                    withContext(Dispatchers.IO) { folderStore.save(updated.keys) }
+                    folderSets = updated
+                    songs = merged(updated)
+                    if (selected == folder) {
+                        selected = null
+                        query = ""
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    error = "Could not save folders: ${failure.message}"
+                } finally {
+                    busy = false
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(folderSets, songs) {
+        onLibraryStatsChanged(folderSets.keys.toList(), songs.size)
+    }
+
+    LaunchedEffect(triggerAddFolder, triggerRemoveFolder) {
+        onRegisterFolderActions(triggerAddFolder, triggerRemoveFolder)
+    }
     fun queueArtist(artist:String) {
         val group=artists.firstOrNull{it.id==ArtistNames.key(artist)}
         if(group!=null){queueOpen=false;onFullPlayer(false);openDetail(LibraryTab.Artists,group.id)}
@@ -245,14 +342,23 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
     val text=query.trim()
     fun matches(song: DesktopSong) = text.isEmpty() || song.title.contains(text,true) ||
         song.artist.contains(text,true) || song.album.contains(text,true) || song.path.contains(text,true)
-    val tracks=baseTracks.filter { matches(it) }
-    val visibleGroups=groups.filter { text.isEmpty() || it.title.contains(text,true) ||
-        it.subtitle.contains(text,true) || it.songs.any { track -> matches(track) } }
+    val tracks = remember(baseTracks, text, sortOption) {
+        val filtered = baseTracks.filter { matches(it) }
+        if (tab == LibraryTab.Tracks || tab == LibraryTab.Liked || (inCollection && detail != null)) {
+            TrackSortingSystem.sortTracks(filtered, sortOption)
+        } else {
+            filtered
+        }
+    }
+    val visibleGroups=remember(groups, text) {
+        groups.filter { text.isEmpty() || it.title.contains(text,true) ||
+            it.subtitle.contains(text,true) || it.songs.any { track -> matches(track) } }
+    }
     val title=detail?.title ?: tab.title
     val countInHeader=detail==null && (tab==LibraryTab.Tracks || tab==LibraryTab.Albums || tab==LibraryTab.Artists)
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide=maxWidth>=1000.dp
+    Box(Modifier.fillMaxSize()) {
+        val wide = isWide
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.weight(1f).fillMaxWidth()) {
                 if(wide) Column(Modifier.width(190.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -344,27 +450,7 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                         }
                         Spacer(Modifier.width(8.dp))
                         Button(enabled=!busy && folderStoreReady,modifier=Modifier.height(40.dp),
-                            contentPadding=PaddingValues(start=14.dp,end=18.dp),onClick={
-                            busy=true;error=null
-                            job=scope.launch {
-                                try {
-                                    val path=chooseMusicFolder(parent) ?: return@launch
-                                    scanning=true
-                                    val result=withContext(Dispatchers.IO) {
-                                        val context=currentCoroutineContext()
-                                        scanner.scan(path) { context.ensureActive() }
-                                    }
-                                    val key=path.toAbsolutePath().normalize().toString()
-                                    val old=folderSets.keys.firstOrNull {it.equals(key,ignoreCase=true)}
-                                    val updated=folderSets.toMutableMap().apply {if(old!=null)remove(old);put(key,result.songs)}
-                                    withContext(Dispatchers.IO){folderStore.save(updated.keys)}
-                                    folderSets=updated;songs=merged(updated)
-                                    message=if(result.unreadableEntries>0) "Skipped ${result.unreadableEntries} unreadable entries." else null
-                                } catch(cancelled: CancellationException) {message="Scan cancelled; previous library kept.";throw cancelled}
-                                catch(failure: Exception) {error="Could not read folder: ${failure.message}"}
-                                finally {scanning=false;busy=false}
-                            }
-                        }) {Glyph("folder",LocalContentColor.current,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Add folder",style=MaterialTheme.typography.labelLarge)}
+                            contentPadding=PaddingValues(start=14.dp,end=18.dp),onClick=triggerAddFolder) {Glyph("folder",LocalContentColor.current,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Add folder",style=MaterialTheme.typography.labelLarge)}
                     }
                     if(restoring) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -381,21 +467,67 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                     message?.let { Text(it,style=MaterialTheme.typography.bodySmall) }
                     AnimatedVisibility(searchOpen,enter=expandVertically(tween(150))+fadeIn(tween(150)),
                         exit=shrinkVertically(tween(120))+fadeOut(tween(120))) {
-                        OutlinedTextField(value=query,onValueChange={query=it},modifier=Modifier.fillMaxWidth(),
-                            singleLine=true,shape=RoundedCornerShape(24.dp),placeholder={Text(if(tab==LibraryTab.Home && detail==null) "Search your library" else "Search $title")},
-                            leadingIcon={Glyph("search",MaterialTheme.colorScheme.onSurfaceVariant)},
-                            trailingIcon={IconButton(onClick={query="";searchOpen=false}) {Glyph("back",LocalContentColor.current)}})
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
+                                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                                    query = ""
+                                    searchOpen = false
+                                    true
+                                } else false
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(24.dp),
+                            placeholder = { Text(if(tab==LibraryTab.Home && detail==null) "Search your library" else "Search $title") },
+                            leadingIcon = { Glyph("search",MaterialTheme.colorScheme.onSurfaceVariant) },
+                            trailingIcon = { IconButton(onClick={query="";searchOpen=false}) { Glyph("back",LocalContentColor.current) } }
+                        )
                     }
                     if(tab!=LibraryTab.Home && !(showGroups && countInHeader)) Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,
                         horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         if(countInHeader) Spacer(Modifier.weight(1f)) else Text(
                             if(showGroups) countLabel(visibleGroups.size,"collection") else countLabel(tracks.size,"track"),
                             Modifier.weight(1f),style=MaterialTheme.typography.labelLarge)
-                        if(!showGroups) FilledTonalButton(enabled=playback.ready && tracks.isNotEmpty(),
-                            modifier=Modifier.height(40.dp),contentPadding=PaddingValues(start=14.dp,end=18.dp),
-                            onClick={audio.play(tracks.first(),tracks)}) {
-                            Glyph("play",LocalContentColor.current,Modifier.size(20.dp));Spacer(Modifier.width(8.dp))
-                            Text("Play all",style=MaterialTheme.typography.labelLarge)
+                        if(!showGroups) {
+                            Box {
+                                OutlinedButton(onClick={sortMenuOpen=true},modifier=Modifier.height(40.dp),
+                                    contentPadding=PaddingValues(horizontal=12.dp)) {
+                                    Text("Sort: ${sortOption.field.displayName} (${if (sortOption.order == SortOrder.ASCENDING) "↑" else "↓"})",
+                                        style=MaterialTheme.typography.labelMedium)
+                                }
+                                DropdownMenu(expanded=sortMenuOpen, onDismissRequest={sortMenuOpen=false}) {
+                                    SortField.entries.forEach { field ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(field.displayName + if (sortOption.field == field) "  ${if (sortOption.order == SortOrder.ASCENDING) "↑" else "↓"}" else "")
+                                            },
+                                            onClick = {
+                                                sortOption = if (sortOption.field == field) {
+                                                    sortOption.copy(order = if (sortOption.order == SortOrder.ASCENDING) SortOrder.DESCENDING else SortOrder.ASCENDING)
+                                                } else {
+                                                    SortOption(field, SortOrder.ASCENDING)
+                                                }
+                                                sortMenuOpen = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            if (tab == LibraryTab.Tracks && selected == null) {
+                                OutlinedButton(onClick={setDuplicatesOpen(true)},modifier=Modifier.height(40.dp),
+                                    contentPadding=PaddingValues(horizontal=12.dp)) {
+                                    Glyph("search",LocalContentColor.current,Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Duplicates",style=MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                            FilledTonalButton(enabled=playback.ready && tracks.isNotEmpty(),
+                                modifier=Modifier.height(40.dp),contentPadding=PaddingValues(start=14.dp,end=18.dp),
+                                onClick={audio.play(tracks.first(),tracks)}) {
+                                Glyph("play",LocalContentColor.current,Modifier.size(20.dp));Spacer(Modifier.width(8.dp))
+                                Text("Play all",style=MaterialTheme.typography.labelLarge)
+                            }
                         }
                         if(tab==LibraryTab.Playlists && selected==null) TextButton(enabled=loaded && !saving,
                             onClick={queueToSave=null;name="";naming=""}) {Glyph("add",LocalContentColor.current);Text("New playlist")}
@@ -419,17 +551,8 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                             DropdownMenu(expanded=folderMenu,onDismissRequest={folderMenu=false}) {
                                 folders.filter { detail==null || tab!=LibraryTab.Folders || it==detail.id }.forEach { folder ->
                                     DropdownMenuItem(text={Text("Remove: $folder",maxLines=1,overflow=TextOverflow.Ellipsis)},onClick={
-                                        folderMenu=false;busy=true
-                                        scope.launch {
-                                            try {
-                                                val updated=folderSets-folder
-                                                withContext(Dispatchers.IO){folderStore.save(updated.keys)}
-                                                folderSets=updated;songs=merged(updated)
-                                                if(selected==folder) {selected=null;query=""}
-                                            } catch(cancelled:CancellationException){throw cancelled}
-                                            catch(failure:Exception){error="Could not save folders: ${failure.message}"}
-                                            finally{busy=false}
-                                        }
+                                        folderMenu=false
+                                        triggerRemoveFolder(folder)
                                     })
                                 }
                             }
@@ -491,6 +614,7 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                                         onPlayNext={audio.playNext(song)},onAppend={audio.appendQueue(listOf(song))},
                                         onAlbum={albums.firstOrNull { song in it.songs }?.let { openDetail(LibraryTab.Albums,it.id) }},
                                         onArtist={artist->artists.firstOrNull {it.id==ArtistNames.key(artist)}?.let { openDetail(LibraryTab.Artists,it.id) }},
+                                        onEditTags={editingSong=song},
                                         onRemove=if(tab==LibraryTab.Playlists && selected!=null) ({
                                             val id=selected;if(id!=null)mutate({store.remove(id,song.id)})
                                         }) else null)
@@ -509,15 +633,21 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                 editable=loaded && !saving,
                 onLike={playback.song?.let { song -> mutate({store.toggleLike(song.id)}) }},
                 onAdd={adding=playback.song}, onQueue={queueOpen=true},onExpand={onFullPlayer(true)},
-                onCollapse={onPlayerCollapsed(true)})
+                onCollapse={onPlayerCollapsed(true)},
+                onEqualizer={equalizerOpen=true},
+                onSleepTimer={sleepTimerOpen=true},
+                sleepTimerState=timerState,
+                isCompact=isCompact)
             }
         }
         if(PlatformPaths.isLinux()) {
             AnimatedVisibility(visible=fullPlayer,enter=fadeIn(tween(200)),exit=fadeOut(tween(200))) {
-                MaterialTheme(colorScheme=fullPlayerColorScheme(playback.song?.accentArgb),typography=AppTypography) {
+                MaterialTheme(colorScheme=ThemeManager.resolveFullPlayerColorScheme(playback.song?.accentArgb),typography=AppTypography) {
                     FullPlayerScreen(audio,liked=saved.isLiked(playback.song?.id),editable=loaded && !saving,
                         onLike={playback.song?.let {song->mutate({store.toggleLike(song.id)})}},
                         onAdd={adding=playback.song},onQueue={queueOpen=true},
+                        onSleepTimer={sleepTimerOpen=true},
+                        sleepTimerState=timerState,
                         onExit={queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)})
                 }
             }
@@ -573,7 +703,7 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
         // Borderless maximized avoids exclusive full-screen capture restrictions on Windows.
         val playerWindowState=rememberWindowState(placement=WindowPlacement.Maximized)
         with(applicationScope) { Window(onCloseRequest={queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)},state=playerWindowState,
-            title="Umimuko Music · Now Playing",icon=painterResource("branding/app-icon.png"),undecorated=true,transparent=true,
+            title="Umimuko Music · Now Playing",icon=painterResource("branding/window-icon.png"),undecorated=true,transparent=true,
             onPreviewKeyEvent={event ->
                 if(event.type==KeyEventType.KeyDown && event.key==Key.Escape) {
                     queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false);true
@@ -588,11 +718,13 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                     fade.animateTo(1f,tween(280))
                 } else fade.animateTo(0f,tween(200))
             }
-            MaterialTheme(colorScheme=fullPlayerColorScheme(playback.song?.accentArgb),typography=AppTypography) {
+            MaterialTheme(colorScheme=ThemeManager.resolveFullPlayerColorScheme(playback.song?.accentArgb),typography=AppTypography) {
                 Box(Modifier.fillMaxSize().graphicsLayer {alpha=fade.value}) {
                     FullPlayerScreen(audio,liked=saved.isLiked(playback.song?.id),editable=loaded && !saving,
                         onLike={playback.song?.let {song->mutate({store.toggleLike(song.id)})}},
                         onAdd={adding=playback.song},onQueue={queueOpen=true},
+                        onSleepTimer={sleepTimerOpen=true},
+                        sleepTimerState=timerState,
                         onExit={queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)})
                 }
                 if(queueOpen) QueueDialog(audio,onDismiss={queueOpen=false},palette=fullscreenQueuePalette,
@@ -608,6 +740,38 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
         playlistDialogs()
     }
 
+    if (equalizerOpen) {
+        EqualizerDialog(audio = audio, onDismissRequest = { equalizerOpen = false })
+    }
+    if (sleepTimerOpen && sleepTimer != null) {
+        SleepTimerDialog(sleepTimer = sleepTimer, onDismissRequest = { sleepTimerOpen = false })
+    }
+    if (editingSong != null) {
+        TagEditorDialog(
+            song = editingSong!!,
+            onDismissRequest = { editingSong = null },
+            onSongUpdated = { updated ->
+                songs = songs.map { if (it.id == updated.id) updated else it }
+                folderSets = folderSets.mapValues { entry ->
+                    entry.value.map { if (it.id == updated.id) updated else it }
+                }
+            }
+        )
+    }
+    if (isDuplicatesOpen) {
+        DuplicatesDialog(
+            songs = songs,
+            onDismissRequest = { setDuplicatesOpen(false) },
+            onDuplicatesDeleted = { deletedIds ->
+                audio.evictSongs(deletedIds)
+                songs = songs.filter { it.id !in deletedIds }
+                folderSets = folderSets.mapValues { entry ->
+                    entry.value.filter { it.id !in deletedIds }
+                }
+            },
+            audio = audio
+        )
+    }
 }
 
 @Composable
@@ -661,7 +825,9 @@ fun ArtistAlbumLine(artist:String,album:String,fallback:String) {
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
 private fun TrackRow(song:DesktopSong,active:Boolean,playing:Boolean,ready:Boolean,liked:Boolean,editable:Boolean,
-    onPlay:()->Unit,onLike:()->Unit,onAdd:()->Unit,onPlayNext:()->Unit,onAppend:()->Unit,onAlbum:()->Unit,onArtist:(String)->Unit,onRemove:(()->Unit)?) {
+    onPlay:()->Unit,onLike:()->Unit,onAdd:()->Unit,onPlayNext:()->Unit,onAppend:()->Unit,onAlbum:()->Unit,onArtist:(String)->Unit,
+    onEditTags:()->Unit={},
+    onRemove:(()->Unit)?) {
     var menu by remember {mutableStateOf(false)}
     Surface(shape=RoundedCornerShape(16.dp),color=if(active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface) {
         Row(Modifier.fillMaxWidth().onPointerEvent(PointerEventType.Press) { event ->
@@ -691,6 +857,7 @@ private fun TrackRow(song:DesktopSong,active:Boolean,playing:Boolean,ready:Boole
                     DropdownMenuItem(text={Text("Play next")},leadingIcon={Glyph("next",LocalContentColor.current)},onClick={menu=false;onPlayNext()})
                     DropdownMenuItem(text={Text("Add to queue")},leadingIcon={Glyph("queue",LocalContentColor.current)},onClick={menu=false;onAppend()})
                     DropdownMenuItem(text={Text("Add to playlist")},leadingIcon={Glyph("playlist_add",LocalContentColor.current)},onClick={menu=false;onAdd()})
+                    DropdownMenuItem(text={Text("Edit tags")},leadingIcon={Glyph("info",LocalContentColor.current)},onClick={menu=false;onEditTags()})
                     DropdownMenuItem(text={Text("Go to album: ${song.album.ifBlank { "Unknown album" }}")},
                         leadingIcon={Glyph("album",LocalContentColor.current)},onClick={menu=false;onAlbum()})
                     ArtistNames.split(song.artist).ifEmpty {listOf("Unknown artist")}.forEach { artist ->

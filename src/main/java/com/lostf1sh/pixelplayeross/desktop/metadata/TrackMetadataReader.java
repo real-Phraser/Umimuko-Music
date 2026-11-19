@@ -14,8 +14,8 @@ public final class TrackMetadataReader {
         java.util.logging.Logger.getLogger("org.jaudiotagger").setLevel(java.util.logging.Level.WARNING);
     }
     public static final class Metadata {
-        public String title = "", artist = "", album = "", albumArtist = "";
-        public int discNumber = 0, trackNumber = 0;
+        public String title = "", artist = "", album = "", albumArtist = "", genre = "", lyrics = "";
+        public int discNumber = 0, trackNumber = 0, year = 0;
         public long durationMs = 0;
         public ArtworkStore.Cover cover;
     }
@@ -30,6 +30,9 @@ public final class TrackMetadataReader {
                 result.artist = tag.getFirst(FieldKey.ARTIST).trim();
                 result.album = tag.getFirst(FieldKey.ALBUM).trim();
                 result.albumArtist = tag.getFirst(FieldKey.ALBUM_ARTIST).trim();
+                result.genre = tag.getFirst(FieldKey.GENRE).trim();
+                try { result.lyrics = tag.getFirst(FieldKey.LYRICS).trim(); } catch (Exception ignored) { }
+                result.year = number(tag.getFirst(FieldKey.YEAR));
                 result.trackNumber = number(tag.getFirst(FieldKey.TRACK));
                 result.discNumber = number(tag.getFirst(FieldKey.DISC_NO));
                 try {

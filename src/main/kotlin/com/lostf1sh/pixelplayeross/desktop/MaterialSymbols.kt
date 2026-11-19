@@ -23,6 +23,6 @@ fun Glyph(kind: String, color: Color, modifier: Modifier = Modifier) {
 private val symbolNames = setOf(
     "play", "pause", "next", "previous", "search", "music", "levels",
     "folder", "library", "volume", "muted", "settings",
-    "home", "pin", "unpin", "drag", "remove", "up", "down", "bubble", "restore", "close", "info",
+    "home", "pin", "unpin", "drag", "remove", "up", "down", "bubble", "restore", "close", "info", "lyrics", "timer", "keyboard",
     "album", "artist", "playlist", "playlist_add", "liked", "heart", "add", "back", "more", "queue", "expand", "collapse", "shuffle", "repeat", "repeat_one",
 )

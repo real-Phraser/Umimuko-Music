@@ -15,6 +15,10 @@ data class DesktopSong(
     val albumArtist: String = "",
     val discNumber: Int = 0,
     val trackNumber: Int = 0,
+    val year: Int = 0,
+    val genre: String = "",
+    val dateAdded: Long = 0L,
+    val lyrics: String = "",
 )
 
 data class ScanResult(val songs: List<DesktopSong>, val unreadableEntries: Int)

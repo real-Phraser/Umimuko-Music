@@ -47,4 +47,18 @@ class MacMediaTest {
         // Clean up
         msgSend.invokeVoid(arrayOf(defaultCenter, sel("setNowPlayingInfo:"), Pointer.NULL))
     }
+
+    @Test
+    fun testMacApplicationIconRuntimeAssignment() {
+        if (!System.getProperty("os.name", "").lowercase().contains("mac")) return
+
+        if (java.awt.Taskbar.isTaskbarSupported()) {
+            val taskbar = java.awt.Taskbar.getTaskbar()
+            kotlin.test.assertTrue(taskbar.isSupported(java.awt.Taskbar.Feature.ICON_IMAGE))
+        }
+
+        val appCls = cls("NSApplication")
+        val app = msgSend.invokePointer(arrayOf(appCls, sel("sharedApplication")))
+        assertNotNull(app, "NSApplication.sharedApplication must not be null")
+    }
 }
