@@ -1,6 +1,7 @@
 package com.lostf1sh.pixelplayeross.desktop
 
 import androidx.compose.foundation.*
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -9,7 +10,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -42,6 +48,8 @@ import androidx.compose.ui.window.rememberWindowState
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import java.util.Locale
@@ -265,20 +273,51 @@ fun LibraryPanel(applicationScope: ApplicationScope, parent: Component, fullPlay
                     verticalArrangement=Arrangement.spacedBy(10.dp)) {
                     if(!wide) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+                        val shape = RoundedCornerShape(8.dp)
                         LibraryTab.entries.forEach { item ->
                             val selected = tab == item
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                                modifier = Modifier.clickable { navigate(item) }
+                            val interactionSource = remember { MutableInteractionSource() }
+                            val isHovered by interactionSource.collectIsHoveredAsState()
+
+                            val containerColor by animateColorAsState(
+                                when {
+                                    selected -> MaterialTheme.colorScheme.primaryContainer
+                                    isHovered -> if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.65f)
+                                    else -> Color.Transparent
+                                }
+                            )
+                            val contentColor by animateColorAsState(
+                                if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                else MaterialTheme.colorScheme.onSurface
+                            )
+                            val borderColor by animateColorAsState(
+                                when {
+                                    selected -> Color.Transparent
+                                    isHovered -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.9f)
+                                    else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                }
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .clip(shape)
+                                    .clickable(
+                                        interactionSource = interactionSource,
+                                        indication = null
+                                    ) { navigate(item) }
+                                    .pointerHoverIcon(PointerIcon.Hand)
+                                    .background(containerColor, shape)
+                                    .border(1.dp, borderColor, shape)
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     item.title,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                    color = contentColor
                                 )
                             }
                         }
