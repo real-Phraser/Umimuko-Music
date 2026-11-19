@@ -79,6 +79,9 @@ fun HomeScreen(albums:List<MusicGroup>,playlists:List<MusicGroup>,home:HomeState
             entranceOver=true
         }
     }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if(listState.isScrollInProgress) entranceOver=true
+    }
     val latestContinuation by rememberUpdatedState(continuation)
     val latestLoading by rememberUpdatedState(loading)
     var heroSong by remember {mutableStateOf<DesktopSong?>(null)}
@@ -144,13 +147,13 @@ fun HomeScreen(albums:List<MusicGroup>,playlists:List<MusicGroup>,home:HomeState
                 }
             }
             if(sections.pinned.isNotEmpty())item("pinned") {
-                HomeShelf("Pinned","Your favorites, within reach",sections.pinned,home,ready,onOpen,onPlay,onPlayNext,onAppend,onPin,onMovePin,1,entranceOver)
+                HomeShelf("Pinned","Your favorites, within reach",sections.pinned,home,ready,onOpen,onPlay,onPlayNext,onAppend,onPin,onMovePin,1,entranceOver,onDismissEntrance={entranceOver=true})
             }
             if(sections.recent.isNotEmpty())item("recent") {
-                HomeShelf("Recently played","Pick up an album again",sections.recent,home,ready,onOpen,onPlay,onPlayNext,onAppend,onPin,onMovePin,2,entranceOver)
+                HomeShelf("Recently played","Pick up an album again",sections.recent,home,ready,onOpen,onPlay,onPlayNext,onAppend,onPin,onMovePin,2,entranceOver,onDismissEntrance={entranceOver=true})
             }
             if(sections.added.isNotEmpty())item("added") {
-                HomeShelf("Recently added","The latest albums in your library",sections.added,home,ready,onOpen,onPlay,onPlayNext,onAppend,onPin,onMovePin,3,entranceOver)
+                HomeShelf("Recently added","The latest albums in your library",sections.added,home,ready,onOpen,onPlay,onPlayNext,onAppend,onPin,onMovePin,3,entranceOver,onDismissEntrance={entranceOver=true})
             }
             if(albums.isNotEmpty() && sections.pinned.isEmpty() && query.isBlank())item("pin-hint") {
                 Row(Modifier.fillMaxWidth().padding(vertical=4.dp),horizontalArrangement=Arrangement.spacedBy(10.dp),
@@ -200,9 +203,13 @@ private fun HomeHero(song:DesktopSong,playing:Boolean,shown:()->Float,go:()->Flo
 @Composable
 private fun HomeShelf(title:String,subtitle:String,collections:List<HomeCollection>,home:HomeState,ready:Boolean,
     onOpen:(String,String)->Unit,onPlay:(MusicGroup)->Unit,onPlayNext:(MusicGroup)->Unit,onAppend:(MusicGroup)->Unit,
-    onPin:(String,String)->Unit,onMovePin:(String,String,Int)->Unit,shelfIndex:Int,entranceOver:Boolean) {
+    onPin:(String,String)->Unit,onMovePin:(String,String,Int)->Unit,shelfIndex:Int,entranceOver:Boolean,
+    onDismissEntrance:()->Unit={}) {
     val rowState=rememberLazyListState()
     val scope=rememberCoroutineScope()
+    LaunchedEffect(rowState.isScrollInProgress) {
+        if(rowState.isScrollInProgress) onDismissEntrance()
+    }
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth().entrance("shelf:$title",shelfIndex*90L,animate=!entranceOver),verticalAlignment=Alignment.CenterVertically,
             horizontalArrangement=Arrangement.spacedBy(6.dp)) {
@@ -212,9 +219,11 @@ private fun HomeShelf(title:String,subtitle:String,collections:List<HomeCollecti
             }
             if(rowState.canScrollBackward || rowState.canScrollForward) {
                 ShelfArrow(false,"Scroll $title left",rowState.canScrollBackward) {
+                    onDismissEntrance()
                     scope.launch {rowState.animateScrollBy(-rowState.layoutInfo.viewportSize.width*.85f)}
                 }
                 ShelfArrow(true,"Scroll $title right",rowState.canScrollForward) {
+                    onDismissEntrance()
                     scope.launch {rowState.animateScrollBy(rowState.layoutInfo.viewportSize.width*.85f)}
                 }
             }
