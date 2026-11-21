@@ -14,7 +14,7 @@
 **A clean, offline-first music player for Windows, macOS, and Linux — no streaming, no accounts, just your music.**
 
 [![Release](https://img.shields.io/github/v/release/real-Phraser/umimuko-music?style=flat-square&color=00A8BF)](https://github.com/real-Phraser/umimuko-music/releases)
-[![Windows](https://img.shields.io/badge/Windows- x64%20%7C%20ARM64 -0078d4?style=flat-square&logo=win&logoColor=white)](https://github.com/real-Phraser/umimuko-music/releases)
+[![Windows](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078d4?style=flat-square&logo=win&logoColor=white)](https://github.com/real-Phraser/umimuko-music/releases)
 [![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-3C1163?style=flat-square&logo=apple)](https://github.com/real-Phraser/umimuko-music/releases)
 [![Linux](https://img.shields.io/badge/Linux-x86__64%20%7C%20aarch64-FCC624?style=flat-square&logo=linux&logoColor=white)](https://github.com/real-Phraser/umimuko-music/releases)
 
