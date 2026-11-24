@@ -236,23 +236,38 @@ private fun SetupTimerView(
         )
 
         // Preset Chips
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             listOf(15, 30, 45, 60).forEach { mins ->
                 val selected = selectedPresetMinutes == mins && !isEndOfTrack
                 FilterChip(
                     selected = selected,
                     onClick = { onSelectPreset(mins) },
-                    label = { Text("${mins}m") },
+                    modifier = Modifier.height(FilterChipDefaults.Height),
+                    label = {
+                        Text(
+                            text = "${mins}m",
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    },
                     shape = RoundedCornerShape(12.dp)
                 )
             }
             FilterChip(
                 selected = isEndOfTrack,
                 onClick = onSelectEndOfTrack,
-                label = { Text("End of Track") },
+                modifier = Modifier.height(FilterChipDefaults.Height),
+                label = {
+                    Text(
+                        text = "End of Track",
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                },
                 shape = RoundedCornerShape(12.dp)
             )
         }
