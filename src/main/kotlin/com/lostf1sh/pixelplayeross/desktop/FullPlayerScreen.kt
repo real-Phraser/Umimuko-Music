@@ -630,7 +630,7 @@ internal fun isDarkFullPlayerBackground(ambientColors: FullPlayerAmbientColors):
     return ambientColors.deepBackground.luminance() < 0.5f
 }
 
-internal fun contrastRatio(foreground: Color, background: Color): Float {
+internal fun fullPlayerContrastRatio(foreground: Color, background: Color): Float {
     val composited = if (foreground.alpha < 1f) foreground.compositeOver(background) else foreground
     val l1 = composited.luminance()
     val l2 = background.luminance()
@@ -639,18 +639,18 @@ internal fun contrastRatio(foreground: Color, background: Color): Float {
     return (lighter + 0.05f) / (darker + 0.05f)
 }
 
-internal fun ensureContrast(
+internal fun ensureFullPlayerContrast(
     foreground: Color,
     backgrounds: List<Color>,
     fallback: Color,
     minRatio: Float = 4.5f
 ): Color {
-    if (backgrounds.all { contrastRatio(foreground, it) >= minRatio }) {
+    if (backgrounds.all { fullPlayerContrastRatio(foreground, it) >= minRatio }) {
         return foreground
     }
     for (step in 1..20) {
         val candidate = lerp(foreground, fallback, step / 20f)
-        if (backgrounds.all { contrastRatio(candidate, it) >= minRatio }) {
+        if (backgrounds.all { fullPlayerContrastRatio(candidate, it) >= minRatio }) {
             return candidate
         }
     }
@@ -667,18 +667,18 @@ internal fun resolveFullPlayerContrastColors(
         lerp(ambientColors.glowBase, ambientColors.glowAccent, 0.38f)
     )
     val idealOnBg = if (isDarkBg) Color(0xFFF5F7FA) else Color(0xFF1A1C1E)
-    val safeOnBackground = ensureContrast(baseScheme.onBackground, backgrounds, idealOnBg, minRatio = 4.5f)
-    val safeOnSurface = ensureContrast(baseScheme.onSurface, backgrounds, safeOnBackground, minRatio = 4.5f)
-    val safeOnSurfaceVariant = ensureContrast(baseScheme.onSurfaceVariant, backgrounds, safeOnBackground, minRatio = 4.5f)
-    val safePrimary = ensureContrast(baseScheme.primary, backgrounds, safeOnBackground, minRatio = 4.5f)
+    val safeOnBackground = ensureFullPlayerContrast(baseScheme.onBackground, backgrounds, idealOnBg, minRatio = 4.5f)
+    val safeOnSurface = ensureFullPlayerContrast(baseScheme.onSurface, backgrounds, safeOnBackground, minRatio = 4.5f)
+    val safeOnSurfaceVariant = ensureFullPlayerContrast(baseScheme.onSurfaceVariant, backgrounds, safeOnBackground, minRatio = 4.5f)
+    val safePrimary = ensureFullPlayerContrast(baseScheme.primary, backgrounds, safeOnBackground, minRatio = 4.5f)
     val safeOnPrimary = contrastingText(safePrimary)
-    val safeOnPrimaryContainer = ensureContrast(
+    val safeOnPrimaryContainer = ensureFullPlayerContrast(
         baseScheme.onPrimaryContainer,
         listOf(baseScheme.primaryContainer),
         contrastingText(baseScheme.primaryContainer),
         minRatio = 4.5f
     )
-    val safeError = ensureContrast(
+    val safeError = ensureFullPlayerContrast(
         baseScheme.error,
         backgrounds,
         if (isDarkBg) Color(0xFFFFEDE9) else Color(0xFF8C1D18),

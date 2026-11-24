@@ -32,32 +32,32 @@ class FullPlayerContrastTest {
 
                 for (bg in backgrounds) {
                     assertTrue(
-                        contrastRatio(resolved.onBackground, bg) >= 4.5f,
+                        fullPlayerContrastRatio(resolved.onBackground, bg) >= 4.5f,
                         "${preset.id} (accent=$accent) onBackground contrast too low"
                     )
                     assertTrue(
-                        contrastRatio(resolved.onSurface, bg) >= 4.5f,
+                        fullPlayerContrastRatio(resolved.onSurface, bg) >= 4.5f,
                         "${preset.id} (accent=$accent) onSurface contrast too low"
                     )
                     assertTrue(
-                        contrastRatio(resolved.onSurfaceVariant, bg) >= 4.5f,
+                        fullPlayerContrastRatio(resolved.onSurfaceVariant, bg) >= 4.5f,
                         "${preset.id} (accent=$accent) onSurfaceVariant contrast too low"
                     )
                     assertTrue(
-                        contrastRatio(resolved.primary, bg) >= 4.5f,
+                        fullPlayerContrastRatio(resolved.primary, bg) >= 4.5f,
                         "${preset.id} (accent=$accent) primary contrast too low"
                     )
                     assertTrue(
-                        contrastRatio(resolved.error, bg) >= 4.5f,
+                        fullPlayerContrastRatio(resolved.error, bg) >= 4.5f,
                         "${preset.id} (accent=$accent) error contrast too low"
                     )
                 }
                 assertTrue(
-                    contrastRatio(resolved.onPrimary, resolved.primary) >= 4.5f,
+                    fullPlayerContrastRatio(resolved.onPrimary, resolved.primary) >= 4.5f,
                     "${preset.id} onPrimary contrast against primary too low"
                 )
                 assertTrue(
-                    contrastRatio(resolved.onPrimaryContainer, resolved.primaryContainer) >= 4.5f,
+                    fullPlayerContrastRatio(resolved.onPrimaryContainer, resolved.primaryContainer) >= 4.5f,
                     "${preset.id} onPrimaryContainer contrast against primaryContainer too low"
                 )
             }
@@ -79,10 +79,10 @@ class FullPlayerContrastTest {
         )
         val resolved = resolveFullPlayerContrastColors(mismatchedLightScheme, darkAmbient)
 
-        assertTrue(contrastRatio(resolved.onBackground, darkAmbient.deepBackground) >= 4.5f)
-        assertTrue(contrastRatio(resolved.onSurface, darkAmbient.deepBackground) >= 4.5f)
-        assertTrue(contrastRatio(resolved.onSurfaceVariant, darkAmbient.deepBackground) >= 4.5f)
-        assertTrue(contrastRatio(resolved.primary, darkAmbient.deepBackground) >= 4.5f)
+        assertTrue(fullPlayerContrastRatio(resolved.onBackground, darkAmbient.deepBackground) >= 4.5f)
+        assertTrue(fullPlayerContrastRatio(resolved.onSurface, darkAmbient.deepBackground) >= 4.5f)
+        assertTrue(fullPlayerContrastRatio(resolved.onSurfaceVariant, darkAmbient.deepBackground) >= 4.5f)
+        assertTrue(fullPlayerContrastRatio(resolved.primary, darkAmbient.deepBackground) >= 4.5f)
     }
 
     @Test
@@ -101,10 +101,10 @@ class FullPlayerContrastTest {
         val resolved = resolveFullPlayerContrastColors(mismatchedDarkScheme, lightAmbient)
         val glowBg = lerp(lightAmbient.glowBase, lightAmbient.glowAccent, 0.38f)
 
-        assertTrue(contrastRatio(resolved.onBackground, lightAmbient.deepBackground) >= 4.5f)
-        assertTrue(contrastRatio(resolved.onBackground, glowBg) >= 4.5f)
-        assertTrue(contrastRatio(resolved.onSurfaceVariant, glowBg) >= 4.5f)
-        assertTrue(contrastRatio(resolved.primary, glowBg) >= 4.5f)
+        assertTrue(fullPlayerContrastRatio(resolved.onBackground, lightAmbient.deepBackground) >= 4.5f)
+        assertTrue(fullPlayerContrastRatio(resolved.onBackground, glowBg) >= 4.5f)
+        assertTrue(fullPlayerContrastRatio(resolved.onSurfaceVariant, glowBg) >= 4.5f)
+        assertTrue(fullPlayerContrastRatio(resolved.primary, glowBg) >= 4.5f)
     }
 
     @Test
