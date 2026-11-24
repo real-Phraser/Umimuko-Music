@@ -34,8 +34,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lostf1sh.pixelplayeross.desktop.library.ArtistNames
-import com.lostf1sh.pixelplayeross.desktop.lyrics.LrcLyrics
-import com.lostf1sh.pixelplayeross.desktop.lyrics.LyricsService
+import com.lostf1sh.pixelplayeross.desktop.lyrics.SpicyLyrics
+import com.lostf1sh.pixelplayeross.desktop.lyrics.SpicyLyricsService
+import com.lostf1sh.pixelplayeross.desktop.lyrics.SpicyLyricsView
 import com.lostf1sh.pixelplayeross.desktop.playback.AudioController
 import com.lostf1sh.pixelplayeross.desktop.playback.RepeatMode
 import com.lostf1sh.pixelplayeross.desktop.theme.FullPlayerAmbientColors
@@ -53,6 +54,7 @@ fun FullPlayerScreen(
     onQueue: () -> Unit,
     onSleepTimer: () -> Unit = {},
     sleepTimerState: com.lostf1sh.pixelplayeross.desktop.system.SleepTimerState? = null,
+    onOpenSettings: (() -> Unit)? = null,
     onExit: () -> Unit
 ) {
     val state by audio.state.collectAsState()
@@ -60,7 +62,7 @@ fun FullPlayerScreen(
     var showLyrics by remember { mutableStateOf(false) }
 
     // Lyrics state
-    var lyrics by remember(state.song?.id) { mutableStateOf(LrcLyrics.EMPTY) }
+    var lyrics by remember(state.song?.id) { mutableStateOf(SpicyLyrics.EMPTY) }
     var isLoadingLyrics by remember(state.song?.id) { mutableStateOf(false) }
 
     LaunchedEffect(state.song?.id) {
@@ -68,12 +70,12 @@ fun FullPlayerScreen(
         if (song != null) {
             isLoadingLyrics = true
             val fetched = withContext(Dispatchers.IO) {
-                LyricsService.getLyrics(song)
+                SpicyLyricsService.getLyrics(song)
             }
             lyrics = fetched
             isLoadingLyrics = false
         } else {
-            lyrics = LrcLyrics.EMPTY
+            lyrics = SpicyLyrics.EMPTY
         }
     }
 
@@ -200,7 +202,7 @@ fun FullPlayerScreen(
                                 )
                             }
 
-                            // Right Pane: Synced Karaoke Lyrics View
+                            // Right Pane: Spicy Lyrics View
                             Box(
                                 Modifier
                                     .weight(1.3f)
@@ -208,16 +210,19 @@ fun FullPlayerScreen(
                                     .background(lyricsContainerColor, RoundedCornerShape(20.dp))
                                     .padding(20.dp)
                             ) {
-                                SyncedLyricsList(
+                                LyricsPaneContent(
                                     lyrics = lyrics,
                                     currentTimeMs = state.time,
                                     isLoading = isLoadingLyrics,
                                     fadeColor = ambientColors.deepBackground,
-                                    onSeekTo = { seekMs ->
+                                    onBackgroundColor = colors.onBackground,
+                                    accentColor = colors.primary,
+                                    onSeek = { seekMs ->
                                         if (state.duration > 0) {
                                             audio.seek(seekMs.toFloat() / state.duration.toFloat())
                                         }
-                                    }
+                                    },
+                                    onOpenSettings = onOpenSettings
                                 )
                             }
                         }
@@ -230,16 +235,19 @@ fun FullPlayerScreen(
                                 .background(lyricsContainerColor, RoundedCornerShape(20.dp))
                                 .padding(16.dp)
                         ) {
-                            SyncedLyricsList(
+                            LyricsPaneContent(
                                 lyrics = lyrics,
                                 currentTimeMs = state.time,
                                 isLoading = isLoadingLyrics,
                                 fadeColor = ambientColors.deepBackground,
-                                onSeekTo = { seekMs ->
+                                onBackgroundColor = colors.onBackground,
+                                accentColor = colors.primary,
+                                onSeek = { seekMs ->
                                     if (state.duration > 0) {
                                         audio.seek(seekMs.toFloat() / state.duration.toFloat())
                                     }
-                                }
+                                },
+                                onOpenSettings = onOpenSettings
                             )
                         }
 
@@ -451,153 +459,37 @@ private fun PlayerScrubberAndControls(
 }
 
 @Composable
-private fun SyncedLyricsList(
-    lyrics: LrcLyrics,
+private fun LyricsPaneContent(
+    lyrics: SpicyLyrics,
     currentTimeMs: Long,
     isLoading: Boolean,
-    fadeColor: Color = Color(0xFF0F1117),
-    onSeekTo: (Long) -> Unit
+    fadeColor: Color,
+    onBackgroundColor: Color,
+    accentColor: Color,
+    onSeek: (Long) -> Unit,
+    onOpenSettings: (() -> Unit)?
 ) {
     if (isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(strokeWidth = 2.dp)
+                CircularProgressIndicator(strokeWidth = 2.dp, color = accentColor)
                 Spacer(Modifier.height(12.dp))
-                Text("Searching synced lyrics online...", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Fetching Spicy Lyrics...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = onBackgroundColor.copy(alpha = 0.72f)
+                )
             }
         }
-        return
-    }
-
-    if (lyrics.lines.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                "No synchronized lyrics available for this track.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        return
-    }
-
-    val activeIndex = lyrics.findActiveLineIndex(currentTimeMs)
-    val listState = rememberLazyListState()
-    val isDragged by listState.interactionSource.collectIsDraggedAsState()
-    var isProgrammaticScroll by remember { mutableStateOf(false) }
-
-    var userScrolled by remember { mutableStateOf(false) }
-    var lastUserScrollEpoch by remember { mutableStateOf(0L) }
-
-    // Detect user manual interaction with scrollbar or mouse wheel
-    LaunchedEffect(listState.isScrollInProgress, isDragged) {
-        if (isDragged || (listState.isScrollInProgress && !isProgrammaticScroll)) {
-            userScrolled = true
-            lastUserScrollEpoch = System.currentTimeMillis()
-        }
-    }
-
-    // Auto-resume smooth tracking 3.5 seconds after user stops manually scrolling
-    LaunchedEffect(currentTimeMs) {
-        if (userScrolled && System.currentTimeMillis() - lastUserScrollEpoch > 3500L) {
-            userScrolled = false
-        }
-    }
-
-    // Centered smooth scroll animation
-    LaunchedEffect(activeIndex, userScrolled) {
-        if (activeIndex >= 0 && !userScrolled) {
-            val layoutInfo = listState.layoutInfo
-            val viewportHeight = layoutInfo.viewportSize.height
-            // Position the active item in the vertical center of the view
-            val centerOffset = if (viewportHeight > 0) -(viewportHeight / 3) else -100
-            isProgrammaticScroll = true
-            try {
-                listState.animateScrollToItem(activeIndex, centerOffset)
-            } finally {
-                kotlinx.coroutines.delay(60L)
-                isProgrammaticScroll = false
-            }
-        }
-    }
-
-    Box(Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(top = 180.dp, bottom = 260.dp)
-        ) {
-            itemsIndexed(lyrics.lines) { index, line ->
-                val isActive = index == activeIndex
-                val isPast = index < activeIndex
-
-                val textColor by animateColorAsState(
-                    targetValue = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    animationSpec = tween(350, easing = FastOutSlowInEasing)
-                )
-
-                val alpha by animateFloatAsState(
-                    targetValue = if (isActive) 1.0f else if (isPast) 0.65f else 0.32f,
-                    animationSpec = tween(350, easing = FastOutSlowInEasing)
-                )
-
-                val scale by animateFloatAsState(
-                    targetValue = if (isActive) 1.12f else 1.0f,
-                    animationSpec = tween(350, easing = FastOutSlowInEasing)
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                            this.alpha = alpha
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
-                        }
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.09f) else Color.Transparent)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                            userScrolled = false
-                            onSeekTo(line.timestampMs)
-                        }
-                        .padding(vertical = 8.dp, horizontal = 12.dp)
-                ) {
-                    Text(
-                        text = line.text.ifBlank { "♪" },
-                        fontSize = 20.sp,
-                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
-                        color = textColor,
-                        lineHeight = 28.sp
-                    )
-                }
-            }
-        }
-
-        // Top edge soft fade
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-                .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(fadeColor.copy(alpha = 0.85f), Color.Transparent)
-                    )
-                )
-        )
-
-        // Bottom edge soft fade
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(96.dp)
-                .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.Transparent, fadeColor.copy(alpha = 0.85f))
-                    )
-                )
+    } else {
+        SpicyLyricsView(
+            lyrics = lyrics,
+            currentTimeMs = currentTimeMs,
+            fadeColor = fadeColor,
+            onBackgroundColor = onBackgroundColor,
+            accentColor = accentColor,
+            onSeek = onSeek,
+            onOpenSettings = onOpenSettings
         )
     }
 }
