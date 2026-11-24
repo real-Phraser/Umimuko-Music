@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -24,15 +26,18 @@ import java.awt.Desktop
 import java.net.URI
 import com.lostf1sh.pixelplayeross.desktop.dsp.CrossfadeCurve
 import com.lostf1sh.pixelplayeross.desktop.dsp.EqualizerDefaults
+import com.lostf1sh.pixelplayeross.desktop.lyrics.SpicyLyricsService
 import com.lostf1sh.pixelplayeross.desktop.playback.AudioController
 import com.lostf1sh.pixelplayeross.desktop.stats.ListeningStatsStore
 import com.lostf1sh.pixelplayeross.desktop.system.KeybindingManager
+import com.lostf1sh.pixelplayeross.desktop.system.trackTextInputFocus
 import com.lostf1sh.pixelplayeross.desktop.theme.ThemeManager
 import com.lostf1sh.pixelplayeross.desktop.theme.ThemePreset
 
 enum class SettingsTab(val title: String, val icon: String) {
     AUDIO_ENGINE("Audio Engine", "levels"),
     LIBRARY("Library & Folders", "folder"),
+    LYRICS("Lyrics", "lyrics"),
     APPEARANCE("Appearance & System", "settings"),
     KEYBINDINGS("Keybindings", "keyboard"),
     STATS("Listening Stats", "queue"),
@@ -165,6 +170,7 @@ fun SettingsDialog(
                                 },
                                 totalTracksCount = totalTracksCount
                             )
+                            SettingsTab.LYRICS -> LyricsTab()
                             SettingsTab.APPEARANCE -> AppearanceTab()
                             SettingsTab.KEYBINDINGS -> KeybindingsTab(keybindingManager)
                             SettingsTab.STATS -> StatsTab()
@@ -343,6 +349,186 @@ private fun LibraryTabContent(
                             Glyph("remove", MaterialTheme.colorScheme.error)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+private const val SPICY_LYRICS_DEV_URL = "https://developers.spicylyrics.org/"
+
+@Composable
+private fun LyricsTab() {
+    var savedApiKey by remember { mutableStateOf(SpicyLyricsService.apiKey) }
+    var apiKeyInput by remember { mutableStateOf(savedApiKey) }
+    var showApiKey by remember { mutableStateOf(false) }
+    var keyStatusMessage by remember { mutableStateOf<String?>(null) }
+    var showRomanized by remember { mutableStateOf(SpicyLyricsService.showRomanized) }
+    var cacheStatusMessage by remember { mutableStateOf<String?>(null) }
+
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        // Spicy Lyrics API Key
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        ) {
+            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Spicy Lyrics API Key", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (SpicyLyricsService.hasApiKey()) "Configured" else "Not configured",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (SpicyLyricsService.hasApiKey()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Text(
+                    text = "Enter your Spicy Lyrics API key (sl_pk_... or sl_sk_...) to fetch word-by-word syllable-synced lyrics.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Get a key at",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HoverLinkText(
+                        text = SPICY_LYRICS_DEV_URL,
+                        enabled = true,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        onClick = { openExternalUrl(SPICY_LYRICS_DEV_URL) }
+                    )
+                }
+
+                OutlinedTextField(
+                    value = apiKeyInput,
+                    onValueChange = {
+                        apiKeyInput = it
+                        keyStatusMessage = null
+                    },
+                    label = { Text("API Key") },
+                    placeholder = { Text("sl_pk_... or sl_sk_...") },
+                    singleLine = true,
+                    visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { showApiKey = !showApiKey }) {
+                            Text(if (showApiKey) "Hide" else "Show")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().trackTextInputFocus()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val trimmedInput = apiKeyInput.trim()
+                    Button(
+                        onClick = {
+                            SpicyLyricsService.apiKey = trimmedInput
+                            apiKeyInput = trimmedInput
+                            savedApiKey = trimmedInput
+                            keyStatusMessage = if (trimmedInput.isNotEmpty()) "API key saved." else "API key cleared."
+                        },
+                        enabled = trimmedInput != savedApiKey
+                    ) {
+                        Text("Save Key")
+                    }
+
+                    if (savedApiKey.isNotEmpty() || apiKeyInput.isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = {
+                                apiKeyInput = ""
+                                SpicyLyricsService.apiKey = ""
+                                savedApiKey = ""
+                                keyStatusMessage = "API key cleared."
+                            }
+                        ) {
+                            Text("Clear")
+                        }
+                    }
+
+                    keyStatusMessage?.let { msg ->
+                        Text(
+                            text = msg,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+
+        // Display Options
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("Show Romanized Lyrics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Display romanized pronunciation below non-Latin lyrics when available",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = showRomanized,
+                    onCheckedChange = {
+                        showRomanized = it
+                        SpicyLyricsService.showRomanized = it
+                    }
+                )
+            }
+        }
+
+        // Cache Management
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Lyrics Cache", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = cacheStatusMessage ?: "Clear cached Spicy Lyrics data stored on disk and in memory",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (cacheStatusMessage != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                FilledTonalButton(
+                    onClick = {
+                        SpicyLyricsService.clearCache()
+                        cacheStatusMessage = "Lyrics cache cleared."
+                    }
+                ) {
+                    Text("Clear Lyrics Cache")
                 }
             }
         }
