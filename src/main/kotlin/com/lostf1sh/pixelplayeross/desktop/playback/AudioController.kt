@@ -312,9 +312,9 @@ class AudioController : AutoCloseable {
         try {
             activeEqualizer = f.equalizer().newEqualizer()
             val eqState = audioSettingsMutable.value.equalizer
-            activeEqualizer?.setPreamp(eqState.preamp)
+            activeEqualizer?.setPreamp(EqualizerDefaults.toLibVlcPreamp(eqState.preamp))
             eqState.bands.forEachIndexed { idx, gain ->
-                activeEqualizer?.setAmp(idx, gain)
+                activeEqualizer?.setAmp(idx, gain.coerceIn(EqualizerDefaults.LIBVLC_MIN_AMP_DB, EqualizerDefaults.LIBVLC_MAX_AMP_DB))
             }
             applyEqualizerToPlayers()
         } catch (_: Throwable) {}
@@ -754,7 +754,7 @@ class AudioController : AutoCloseable {
         audioSettingsMutable.value = audioSettingsMutable.value.copy(
             equalizer = current.copy(preamp = safe, activePreset = "Custom")
         )
-        activeEqualizer?.setPreamp(safe)
+        activeEqualizer?.setPreamp(EqualizerDefaults.toLibVlcPreamp(safe))
         applyEqualizerToPlayers()
         StartupPrefs.eqPreamp = safe
         StartupPrefs.eqPreset = "Custom"
@@ -784,9 +784,9 @@ class AudioController : AutoCloseable {
                 activePreset = preset.name
             )
         )
-        activeEqualizer?.setPreamp(preset.preamp)
+        activeEqualizer?.setPreamp(EqualizerDefaults.toLibVlcPreamp(preset.preamp))
         preset.bandGains.forEachIndexed { idx, gain ->
-            activeEqualizer?.setAmp(idx, gain)
+            activeEqualizer?.setAmp(idx, gain.coerceIn(EqualizerDefaults.LIBVLC_MIN_AMP_DB, EqualizerDefaults.LIBVLC_MAX_AMP_DB))
         }
         applyEqualizerToPlayers()
         StartupPrefs.eqPreamp = preset.preamp

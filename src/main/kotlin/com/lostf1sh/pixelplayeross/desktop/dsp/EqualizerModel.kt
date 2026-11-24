@@ -53,6 +53,21 @@ object EqualizerDefaults {
     const val MAX_RATE = 2.0f
     const val MAX_CROSSFADE_SECONDS = 12.0f
 
+    // LibVLC's equalizer filter applies an internal -12 dB headroom attenuation
+    // (LibVLC's built-in "Flat" preset uses +12 dB preamp for unity gain).
+    const val LIBVLC_UNITY_PREAMP_OFFSET_DB = 12.0f
+    const val LIBVLC_MIN_AMP_DB = -20.0f
+    const val LIBVLC_MAX_AMP_DB = 20.0f
+
+    /**
+     * Converts a user-facing preamp value (where 0 dB means unity gain) into
+     * the LibVLC equalizer preamp value, clamped to LibVLC's [-20, 20] dB range.
+     */
+    fun toLibVlcPreamp(userPreampDb: Float): Float {
+        return (userPreampDb + LIBVLC_UNITY_PREAMP_OFFSET_DB)
+            .coerceIn(LIBVLC_MIN_AMP_DB, LIBVLC_MAX_AMP_DB)
+    }
+
     val BUILT_IN_PRESETS: List<EqualizerPreset> = listOf(
         EqualizerPreset("Flat", 0.0f, List(10) { 0.0f }, isBuiltIn = true),
         EqualizerPreset("Bass Boost", 1.0f, listOf(6.0f, 5.0f, 4.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f), isBuiltIn = true),
