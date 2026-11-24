@@ -367,13 +367,18 @@ private fun AppearanceTab() {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             val presets = ThemePreset.entries
             for (i in presets.indices step 2) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Max),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     val p1 = presets[i]
                     ThemeCard(
                         preset = p1,
                         isSelected = p1 == currentPreset,
                         onSelect = { ThemeManager.setPreset(p1) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).fillMaxHeight()
                     )
                     if (i + 1 < presets.size) {
                         val p2 = presets[i + 1]
@@ -381,7 +386,7 @@ private fun AppearanceTab() {
                             preset = p2,
                             isSelected = p2 == currentPreset,
                             onSelect = { ThemeManager.setPreset(p2) },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).fillMaxHeight()
                         )
                     } else {
                         Spacer(Modifier.weight(1f))
@@ -478,14 +483,16 @@ private fun ThemeCard(
     onSelect: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val shape = RoundedCornerShape(16.dp)
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = shape,
         border = BorderStroke(
             width = if (isSelected) 2.dp else 1.dp,
-            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
         ),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isSelected) 0.6f else 0.25f),
-        modifier = modifier.clickable { onSelect() }
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isSelected) 0.7f else 0.35f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier.clip(shape).clickable { onSelect() }
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -497,7 +504,8 @@ private fun ThemeCard(
                 modifier = Modifier
                     .size(42.dp)
                     .clip(CircleShape)
-                    .background(preset.previewBackground),
+                    .background(preset.previewBackground)
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -508,17 +516,20 @@ private fun ThemeCard(
                 )
             }
 
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 Text(
                     text = preset.displayName,
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = preset.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f)
                 )
             }
         }
