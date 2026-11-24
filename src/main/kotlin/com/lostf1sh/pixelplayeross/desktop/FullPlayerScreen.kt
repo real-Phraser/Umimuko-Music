@@ -22,8 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +38,7 @@ import com.lostf1sh.pixelplayeross.desktop.lyrics.LrcLyrics
 import com.lostf1sh.pixelplayeross.desktop.lyrics.LyricsService
 import com.lostf1sh.pixelplayeross.desktop.playback.AudioController
 import com.lostf1sh.pixelplayeross.desktop.playback.RepeatMode
+import com.lostf1sh.pixelplayeross.desktop.theme.FullPlayerAmbientColors
 import com.lostf1sh.pixelplayeross.desktop.theme.ThemeManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -98,9 +101,14 @@ fun FullPlayerScreen(
         )
     }
 
-    val fullColors = remember(currentPreset, state.song?.accentArgb) {
-        ThemeManager.resolveFullPlayerColorScheme(state.song?.accentArgb)
+    val fullColors = remember(currentPreset, state.song?.accentArgb, ambientColors) {
+        resolveFullPlayerContrastColors(
+            baseScheme = ThemeManager.resolveFullPlayerColorScheme(state.song?.accentArgb),
+            ambientColors = ambientColors
+        )
     }
+    val isDarkBg = remember(ambientColors) { isDarkFullPlayerBackground(ambientColors) }
+    val lyricsContainerColor = if (isDarkBg) Color.Black.copy(alpha = 0.24f) else fullColors.surface.copy(alpha = 0.72f)
 
     MaterialTheme(colorScheme = fullColors, typography = MaterialTheme.typography) {
         val colors = MaterialTheme.colorScheme
@@ -139,7 +147,10 @@ fun FullPlayerScreen(
 
                         Spacer(Modifier.width(8.dp))
 
-                        TextButton(onClick = onExit) {
+                        TextButton(
+                            onClick = onExit,
+                            colors = ButtonDefaults.textButtonColors(contentColor = colors.primary)
+                        ) {
                             Glyph("collapse", LocalContentColor.current)
                             Spacer(Modifier.width(8.dp))
                             Text("Back")
@@ -194,7 +205,7 @@ fun FullPlayerScreen(
                                 Modifier
                                     .weight(1.3f)
                                     .fillMaxHeight()
-                                    .background(Color.Black.copy(alpha = 0.22f), RoundedCornerShape(20.dp))
+                                    .background(lyricsContainerColor, RoundedCornerShape(20.dp))
                                     .padding(20.dp)
                             ) {
                                 SyncedLyricsList(
@@ -216,7 +227,7 @@ fun FullPlayerScreen(
                             Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(20.dp))
+                                .background(lyricsContainerColor, RoundedCornerShape(20.dp))
                                 .padding(16.dp)
                         ) {
                             SyncedLyricsList(
@@ -293,13 +304,13 @@ private fun PlayerMetadataSection(song: com.lostf1sh.pixelplayeross.desktop.libr
         val nameWidth = Modifier.widthIn(max = 680.dp)
         BouncingText(
             song?.title ?: "Pick something to play",
-            MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+            MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, color = colors.onBackground),
             nameWidth,
             centered = true
         )
         BouncingText(
             song?.let { ArtistNames.split(it.artist).joinToString(" · ") }?.ifBlank { "Unknown artist" } ?: "",
-            MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal),
+            MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal, color = colors.onBackground),
             nameWidth,
             centered = true
         )
@@ -336,6 +347,7 @@ private fun PlayerScrubberAndControls(
                 trackClock(preview?.let { (it * state.duration).toLong() } ?: state.time),
                 Modifier.width(44.dp),
                 style = MaterialTheme.typography.labelSmall,
+                color = colors.onBackground,
                 textAlign = TextAlign.End
             )
             key(state.song?.id) {
@@ -351,7 +363,8 @@ private fun PlayerScrubberAndControls(
             Text(
                 trackClock(state.duration),
                 Modifier.width(44.dp),
-                style = MaterialTheme.typography.labelSmall
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onBackground
             )
         }
 
@@ -421,7 +434,7 @@ private fun PlayerScrubberAndControls(
                 onCommit = { audio.volume((it * 100).toInt()) }
             )
             Spacer(Modifier.width(10.dp))
-            Text("${state.volume}%", Modifier.width(44.dp), style = MaterialTheme.typography.labelSmall)
+            Text("${state.volume}%", Modifier.width(44.dp), style = MaterialTheme.typography.labelSmall, color = colors.onBackground)
         }
 
         state.error?.let {
@@ -597,13 +610,87 @@ private fun FullPlayerButton(
     onClick: () -> Unit,
     active: Boolean = false
 ) {
+    val contentColor = MaterialTheme.colorScheme.onBackground
     IconButton(
         onClick = onClick,
         enabled = enabled,
+        colors = IconButtonDefaults.iconButtonColors(
+            contentColor = contentColor,
+            disabledContentColor = contentColor.copy(alpha = 0.38f)
+        ),
         modifier = Modifier.size(48.dp).semantics { contentDescription = label }
     ) {
         val color = if ((icon == "heart" || active) && enabled) MaterialTheme.colorScheme.primary else LocalContentColor.current
         if (icon == "shuffle" || icon == "repeat" || icon == "repeat_one") ActiveControlGlyph(icon, color, active)
         else Glyph(icon, color)
     }
+}
+
+internal fun isDarkFullPlayerBackground(ambientColors: FullPlayerAmbientColors): Boolean {
+    return ambientColors.deepBackground.luminance() < 0.5f
+}
+
+internal fun contrastRatio(foreground: Color, background: Color): Float {
+    val composited = if (foreground.alpha < 1f) foreground.compositeOver(background) else foreground
+    val l1 = composited.luminance()
+    val l2 = background.luminance()
+    val lighter = maxOf(l1, l2)
+    val darker = minOf(l1, l2)
+    return (lighter + 0.05f) / (darker + 0.05f)
+}
+
+internal fun ensureContrast(
+    foreground: Color,
+    backgrounds: List<Color>,
+    fallback: Color,
+    minRatio: Float = 4.5f
+): Color {
+    if (backgrounds.all { contrastRatio(foreground, it) >= minRatio }) {
+        return foreground
+    }
+    for (step in 1..20) {
+        val candidate = lerp(foreground, fallback, step / 20f)
+        if (backgrounds.all { contrastRatio(candidate, it) >= minRatio }) {
+            return candidate
+        }
+    }
+    return fallback
+}
+
+internal fun resolveFullPlayerContrastColors(
+    baseScheme: ColorScheme,
+    ambientColors: FullPlayerAmbientColors
+): ColorScheme {
+    val isDarkBg = isDarkFullPlayerBackground(ambientColors)
+    val backgrounds = listOf(
+        ambientColors.deepBackground,
+        lerp(ambientColors.glowBase, ambientColors.glowAccent, 0.38f)
+    )
+    val idealOnBg = if (isDarkBg) Color(0xFFF5F7FA) else Color(0xFF1A1C1E)
+    val safeOnBackground = ensureContrast(baseScheme.onBackground, backgrounds, idealOnBg, minRatio = 4.5f)
+    val safeOnSurface = ensureContrast(baseScheme.onSurface, backgrounds, safeOnBackground, minRatio = 4.5f)
+    val safeOnSurfaceVariant = ensureContrast(baseScheme.onSurfaceVariant, backgrounds, safeOnBackground, minRatio = 4.5f)
+    val safePrimary = ensureContrast(baseScheme.primary, backgrounds, safeOnBackground, minRatio = 4.5f)
+    val safeOnPrimary = contrastingText(safePrimary)
+    val safeOnPrimaryContainer = ensureContrast(
+        baseScheme.onPrimaryContainer,
+        listOf(baseScheme.primaryContainer),
+        contrastingText(baseScheme.primaryContainer),
+        minRatio = 4.5f
+    )
+    val safeError = ensureContrast(
+        baseScheme.error,
+        backgrounds,
+        if (isDarkBg) Color(0xFFFFEDE9) else Color(0xFF8C1D18),
+        minRatio = 4.5f
+    )
+    return baseScheme.copy(
+        primary = safePrimary,
+        onPrimary = safeOnPrimary,
+        onPrimaryContainer = safeOnPrimaryContainer,
+        onBackground = safeOnBackground,
+        onSurface = safeOnSurface,
+        onSurfaceVariant = safeOnSurfaceVariant,
+        error = safeError
+    )
 }
