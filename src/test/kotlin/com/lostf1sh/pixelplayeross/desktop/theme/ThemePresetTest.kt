@@ -35,4 +35,27 @@ class ThemePresetTest {
         // Unknown id falls back to DYNAMIC
         assertEquals(ThemePreset.DYNAMIC, ThemePreset.fromId("unknown_custom_id"))
     }
+
+    @Test
+    fun dynamicFullscreenAmbientUsesCoverAccent() {
+        val coverAccent = 0xFFFF5500.toInt()
+        val ambient = ThemeManager.resolveFullPlayerAmbientColors(coverAccent, ThemePreset.DYNAMIC)
+        assertEquals(Color(coverAccent), ambient.glowAccent)
+        assertEquals(Color(0xFF14171E), ambient.glowBase)
+        assertEquals(Color(0xFF0F1117), ambient.deepBackground)
+    }
+
+    @Test
+    fun nonDynamicFullscreenAmbientUsesThemeColorsInsteadOfCoverAccent() {
+        val coverAccent = 0xFFFF5500.toInt()
+        for (preset in ThemePreset.entries) {
+            if (preset == ThemePreset.DYNAMIC) continue
+            val scheme = preset.colorScheme(isDark = true, coverAccent = coverAccent)
+            val ambient = ThemeManager.resolveFullPlayerAmbientColors(coverAccent, preset)
+            assertEquals(scheme.primary, ambient.glowAccent, "${preset.id} should use theme primary for glowAccent")
+            assertEquals(scheme.surface, ambient.glowBase, "${preset.id} should use theme surface for glowBase")
+            assertEquals(scheme.background, ambient.deepBackground, "${preset.id} should use theme background for deepBackground")
+            assertNotEquals(Color(coverAccent), ambient.glowAccent, "${preset.id} must ignore album cover accent")
+        }
+    }
 }

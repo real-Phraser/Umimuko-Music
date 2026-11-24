@@ -74,7 +74,10 @@ fun FullPlayerScreen(
         }
     }
 
-    val coverColor = Color(state.song?.accentArgb ?: 0xFF2166C2.toInt())
+    val currentPreset by ThemeManager.currentPreset.collectAsState()
+    val ambientColors = remember(currentPreset, state.song?.accentArgb) {
+        ThemeManager.resolveFullPlayerAmbientColors(state.song?.accentArgb, currentPreset)
+    }
 
     // Dynamic ambient glow animation
     val infiniteTransition = rememberInfiniteTransition()
@@ -87,16 +90,15 @@ fun FullPlayerScreen(
         )
     )
 
-    val backgroundGradient = remember(coverColor, ambientPulse) {
-        val primaryGlow = lerp(Color(0xFF14171E), coverColor, ambientPulse)
-        val deepBg = Color(0xFF0F1117)
+    val backgroundGradient = remember(ambientColors, ambientPulse) {
+        val primaryGlow = lerp(ambientColors.glowBase, ambientColors.glowAccent, ambientPulse)
         Brush.radialGradient(
-            colors = listOf(primaryGlow, deepBg),
+            colors = listOf(primaryGlow, ambientColors.deepBackground),
             radius = 1600f
         )
     }
 
-    val fullColors = remember(state.song?.accentArgb) {
+    val fullColors = remember(currentPreset, state.song?.accentArgb) {
         ThemeManager.resolveFullPlayerColorScheme(state.song?.accentArgb)
     }
 
@@ -199,6 +201,7 @@ fun FullPlayerScreen(
                                     lyrics = lyrics,
                                     currentTimeMs = state.time,
                                     isLoading = isLoadingLyrics,
+                                    fadeColor = ambientColors.deepBackground,
                                     onSeekTo = { seekMs ->
                                         if (state.duration > 0) {
                                             audio.seek(seekMs.toFloat() / state.duration.toFloat())
@@ -220,6 +223,7 @@ fun FullPlayerScreen(
                                 lyrics = lyrics,
                                 currentTimeMs = state.time,
                                 isLoading = isLoadingLyrics,
+                                fadeColor = ambientColors.deepBackground,
                                 onSeekTo = { seekMs ->
                                     if (state.duration > 0) {
                                         audio.seek(seekMs.toFloat() / state.duration.toFloat())
@@ -438,6 +442,7 @@ private fun SyncedLyricsList(
     lyrics: LrcLyrics,
     currentTimeMs: Long,
     isLoading: Boolean,
+    fadeColor: Color = Color(0xFF0F1117),
     onSeekTo: (Long) -> Unit
 ) {
     if (isLoading) {
@@ -564,7 +569,7 @@ private fun SyncedLyricsList(
                 .align(Alignment.TopCenter)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFF0F1117).copy(alpha = 0.85f), Color.Transparent)
+                        listOf(fadeColor.copy(alpha = 0.85f), Color.Transparent)
                     )
                 )
         )
@@ -577,7 +582,7 @@ private fun SyncedLyricsList(
                 .align(Alignment.BottomCenter)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color(0xFF0F1117).copy(alpha = 0.85f))
+                        listOf(Color.Transparent, fadeColor.copy(alpha = 0.85f))
                     )
                 )
         )
