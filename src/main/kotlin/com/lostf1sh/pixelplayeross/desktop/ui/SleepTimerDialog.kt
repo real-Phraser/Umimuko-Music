@@ -40,7 +40,7 @@ fun SleepTimerDialog(
     ) {
         Surface(
             modifier = Modifier
-                .widthIn(min = 420.dp, max = 480.dp)
+                .widthIn(min = 480.dp, max = 540.dp)
                 .wrapContentHeight()
                 .padding(24.dp)
                 .clip(RoundedCornerShape(24.dp)),
@@ -236,39 +236,22 @@ private fun SetupTimerView(
         )
 
         // Preset Chips
-        FlowRow(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             listOf(15, 30, 45, 60).forEach { mins ->
                 val selected = selectedPresetMinutes == mins && !isEndOfTrack
-                FilterChip(
+                PresetChip(
+                    label = "${mins}m",
                     selected = selected,
-                    onClick = { onSelectPreset(mins) },
-                    modifier = Modifier.height(FilterChipDefaults.Height),
-                    label = {
-                        Text(
-                            text = "${mins}m",
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    },
-                    shape = RoundedCornerShape(12.dp)
+                    onClick = { onSelectPreset(mins) }
                 )
             }
-            FilterChip(
+            PresetChip(
+                label = "End of Track",
                 selected = isEndOfTrack,
-                onClick = onSelectEndOfTrack,
-                modifier = Modifier.height(FilterChipDefaults.Height),
-                label = {
-                    Text(
-                        text = "End of Track",
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                },
-                shape = RoundedCornerShape(12.dp)
+                onClick = onSelectEndOfTrack
             )
         }
 
@@ -318,6 +301,34 @@ private fun SetupTimerView(
             shape = RoundedCornerShape(14.dp)
         ) {
             Text("Start Sleep Timer", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun PresetChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.height(32.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                softWrap = false
+            )
         }
     }
 }
