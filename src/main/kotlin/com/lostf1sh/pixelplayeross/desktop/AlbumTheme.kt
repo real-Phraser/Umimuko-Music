@@ -4,6 +4,7 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.lerp
 
@@ -48,10 +49,11 @@ fun contrastingText(background: Color): Color {
     return if ((luminance + .05f) / .05f > 1.05f / (luminance + .05f)) Color.Black else Color.White
 }
 
-/** WCAG 2.x relative luminance contrast ratio between two opaque colors. */
-fun contrastRatio(a: Color, b: Color): Float {
-    val l1 = a.luminance()
-    val l2 = b.luminance()
+/** WCAG 2.x relative luminance contrast ratio, compositing semi-transparent [foreground] over [background]. */
+fun contrastRatio(foreground: Color, background: Color): Float {
+    val effectiveFg = if (foreground.alpha < 1f) foreground.compositeOver(background) else foreground
+    val l1 = effectiveFg.luminance()
+    val l2 = background.luminance()
     return (maxOf(l1, l2) + .05f) / (minOf(l1, l2) + .05f)
 }
 
