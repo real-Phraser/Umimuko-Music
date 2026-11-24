@@ -735,6 +735,9 @@ private fun SyllableSweepLine(
             color = Color.White
         )
     }
+    val bloomTextStyle = remember(staticTextStyle, glowCoreColor) {
+        staticTextStyle.copy(color = glowCoreColor)
+    }
 
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
@@ -747,81 +750,70 @@ private fun SyllableSweepLine(
         words.forEach { wordSyllables ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 wordSyllables.forEach { syl ->
-                    Text(
-                        text = syl.text,
-                        style = staticTextStyle,
-                        modifier = Modifier
-                            .graphicsLayer {
-                                if (isLineActive && !isLinePast) {
-                                    val env = syllableSingingEnvelope(syl, timeProvider())
-                                    translationY = liftPx * env
-                                    val s = 1f + 0.06f * env
-                                    scaleX = s
-                                    scaleY = s
-                                }
+                    Box(
+                        modifier = Modifier.graphicsLayer {
+                            if (isLineActive && !isLinePast) {
+                                val env = syllableSingingEnvelope(syl, timeProvider())
+                                translationY = liftPx * env
+                                val s = 1f + 0.06f * env
+                                scaleX = s
+                                scaleY = s
                             }
-                            .drawBehind {
-                                if (isLineActive && !isLinePast) {
-                                    val nowMs = timeProvider()
-                                    val progress = syllableProgress(syl, nowMs)
-                                    val env = syllableSingingEnvelope(syl, nowMs)
-                                    val glowAlpha = (0.20f * progress + 0.42f * env).coerceIn(0f, 0.62f)
-                                    if (glowAlpha > 0.01f) {
-                                        val radius = maxOf(size.width, size.height) * 1.15f
-                                        if (radius > 0f) {
-                                            drawCircle(
-                                                brush = Brush.radialGradient(
-                                                    colors = listOf(
-                                                        glowCoreColor.copy(alpha = glowAlpha),
-                                                        accentColor.copy(alpha = glowAlpha * 0.45f),
-                                                        Color.Transparent
-                                                    ),
-                                                    center = center,
-                                                    radius = radius
+                        }
+                    ) {
+                        if (isLineActive && !isLinePast) {
+                            Text(
+                                text = syl.text,
+                                style = bloomTextStyle,
+                                modifier = Modifier
+                                    .blur(5.dp, BlurredEdgeTreatment.Unbounded)
+                                    .graphicsLayer {
+                                        val env = syllableSingingEnvelope(syl, timeProvider())
+                                        alpha = (env * 0.22f).coerceIn(0f, 0.22f)
+                                    }
+                            )
+                        }
+                        Text(
+                            text = syl.text,
+                            style = staticTextStyle,
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    compositingStrategy = CompositingStrategy.Offscreen
+                                }
+                                .drawWithContent {
+                                    drawContent()
+                                    val progress = when {
+                                        isLinePast -> 1f
+                                        !isLineActive -> 0f
+                                        else -> syllableProgress(syl, timeProvider())
+                                    }
+                                    when {
+                                        progress <= 0.001f -> {
+                                            drawRect(color = unlitColor, blendMode = BlendMode.SrcIn)
+                                        }
+                                        progress >= 0.999f -> {
+                                            drawRect(color = litColor, blendMode = BlendMode.SrcIn)
+                                        }
+                                        else -> {
+                                            val feather = 0.20f
+                                            val startFade = (progress * (1f + feather) - feather).coerceIn(0f, 1f)
+                                            val endFade = (progress * (1f + feather)).coerceIn(0f, 1f)
+                                            drawRect(
+                                                brush = Brush.horizontalGradient(
+                                                    0f to litColor,
+                                                    startFade to litColor,
+                                                    endFade to unlitColor,
+                                                    1f to unlitColor,
+                                                    startX = 0f,
+                                                    endX = size.width.coerceAtLeast(1f)
                                                 ),
-                                                radius = radius,
-                                                center = center
+                                                blendMode = BlendMode.SrcIn
                                             )
                                         }
                                     }
                                 }
-                            }
-                            .graphicsLayer {
-                                compositingStrategy = CompositingStrategy.Offscreen
-                            }
-                            .drawWithContent {
-                                drawContent()
-                                val progress = when {
-                                    isLinePast -> 1f
-                                    !isLineActive -> 0f
-                                    else -> syllableProgress(syl, timeProvider())
-                                }
-                                when {
-                                    progress <= 0.001f -> {
-                                        drawRect(color = unlitColor, blendMode = BlendMode.SrcIn)
-                                    }
-                                    progress >= 0.999f -> {
-                                        drawRect(color = litColor, blendMode = BlendMode.SrcIn)
-                                    }
-                                    else -> {
-                                        val feather = 0.20f
-                                        val startFade = (progress * (1f + feather) - feather).coerceIn(0f, 1f)
-                                        val endFade = (progress * (1f + feather)).coerceIn(0f, 1f)
-                                        drawRect(
-                                            brush = Brush.horizontalGradient(
-                                                0f to litColor,
-                                                startFade to litColor,
-                                                endFade to unlitColor,
-                                                1f to unlitColor,
-                                                startX = 0f,
-                                                endX = size.width.coerceAtLeast(1f)
-                                            ),
-                                            blendMode = BlendMode.SrcIn
-                                        )
-                                    }
-                                }
-                            }
-                    )
+                        )
+                    }
                 }
             }
         }
