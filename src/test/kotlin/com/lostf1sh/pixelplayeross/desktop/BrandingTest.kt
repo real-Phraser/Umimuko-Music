@@ -110,6 +110,57 @@ class BrandingTest {
         assertTrue(Files.isRegularFile(icns) && Files.size(icns) > 1000, "packaging/umimuko.icns must exist and be valid")
     }
 
+    @Test
+    fun testWindowIcoResourceMatchesOfficialPackaging() {
+        val stream: InputStream? = javaClass.classLoader.getResourceAsStream("branding/umimuko.ico")
+        assertNotNull(stream, "branding/umimuko.ico must be present on the classpath")
+
+        val resourceBytes = stream.use { it.readAllBytes() }
+        val packagingPath = Path.of("packaging", "umimuko.ico")
+        assertTrue(Files.isRegularFile(packagingPath), "packaging/umimuko.ico must exist on disk")
+
+        val packagingBytes = Files.readAllBytes(packagingPath)
+        assertEquals(packagingBytes.size, resourceBytes.size, "branding/umimuko.ico size must match packaging/umimuko.ico")
+
+        val md = MessageDigest.getInstance("SHA-256")
+        val packagingHash = md.digest(packagingBytes).joinToString("") { "%02x".format(it) }
+        md.reset()
+        val resourceHash = md.digest(resourceBytes).joinToString("") { "%02x".format(it) }
+        assertEquals(packagingHash, resourceHash, "SHA-256 checksums for umimuko.ico must match")
+    }
+
+    @Test
+    fun testPackagingIcoContainsStandardWindowsTaskbarSizes() {
+        val bytes = Files.readAllBytes(Path.of("packaging", "umimuko.ico"))
+        assertTrue(bytes.size >= 6, "ICO file too small")
+        val buf = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val reserved = buf.short.toInt() and 0xFFFF
+        val type = buf.short.toInt() and 0xFFFF
+        val count = buf.short.toInt() and 0xFFFF
+        assertEquals(0, reserved, "ICO reserved header must be 0")
+        assertEquals(1, type, "ICO type header must be 1")
+        assertTrue(count >= 5, "ICO must contain multiple icon sizes")
+
+        val sizes = mutableSetOf<Int>()
+        for (i in 0 until count) {
+            val wRaw = buf.get().toInt() and 0xFF
+            val hRaw = buf.get().toInt() and 0xFF
+            buf.get() // colorCount
+            buf.get() // reserved
+            buf.short // planes
+            buf.short // bitCount
+            buf.int // bytesInRes
+            buf.int // imageOffset
+            val w = if (wRaw == 0) 256 else wRaw
+            val h = if (hRaw == 0) 256 else hRaw
+            assertEquals(w, h, "ICO entry $i must be square")
+            sizes.add(w)
+        }
+        for (required in intArrayOf(16, 24, 32, 48, 64, 128, 256)) {
+            assertTrue(required in sizes, "packaging/umimuko.ico must include ${required}x${required} for Windows taskbar/shell")
+        }
+    }
+
     private fun scaleIcon(src: BufferedImage, targetSize: Int): BufferedImage {
         var current = src
         var currentW = src.width

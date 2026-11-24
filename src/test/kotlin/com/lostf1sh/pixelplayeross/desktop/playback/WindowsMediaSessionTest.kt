@@ -35,8 +35,8 @@ class WindowsMediaSessionTest {
 
         val filename = iconPath.fileName.toString()
         assertTrue(
-            filename.endsWith(".ico") || filename.endsWith(".png"),
-            "Extracted icon should be an .ico or .png file: $filename"
+            filename.endsWith(".ico"),
+            "Extracted icon should be a .ico file for Windows shell/taskbar: $filename"
         )
     }
 

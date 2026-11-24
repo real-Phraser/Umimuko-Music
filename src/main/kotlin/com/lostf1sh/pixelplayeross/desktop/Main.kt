@@ -165,13 +165,13 @@ fun main() {
         },
         title = "Umimuko Music",
         state = state,
-        icon = painterResource("branding/window-icon.png")
+        // Avoid passing a single-resolution Painter when appIconImages is loaded,
+        // otherwise Compose's Window update overwrites window.iconImages with 1 image.
+        icon = if (appIconImages.isEmpty()) painterResource("branding/window-icon.png") else null
     ) {
         mainWindow = window
         window.minimumSize=Dimension(760,600)
-        if (appIconImages.isNotEmpty()) {
-            window.iconImages = appIconImages
-        }
+        applyWindowIcons(window)
         val initialDark = if (StartupPrefs.followSystemTheme) androidx.compose.foundation.isSystemInDarkTheme() else StartupPrefs.darkMode
         val initialPalette = albumColorScheme(initialDark, null)
         val initialBg = java.awt.Color(
@@ -196,9 +196,18 @@ fun main() {
                     window.isVisible = false
                 }
             }
-            if (appIconImages.isNotEmpty()) {
-                window.iconImages = appIconImages
-            }
+            applyWindowIcons(window)
+            javax.swing.SwingUtilities.invokeLater { applyWindowIcons(window) }
+            window.addWindowListener(object : java.awt.event.WindowAdapter() {
+                override fun windowOpened(e: java.awt.event.WindowEvent) {
+                    applyWindowIcons(window)
+                }
+            })
+            window.addComponentListener(object : java.awt.event.ComponentAdapter() {
+                override fun componentShown(e: java.awt.event.ComponentEvent) {
+                    applyWindowIcons(window)
+                }
+            })
             if (PlatformPaths.isMac()) {
                 window.rootPane.putClientProperty("apple.awt.fullscreenable", true)
                 val insets = java.awt.Toolkit.getDefaultToolkit().getScreenInsets(window.graphicsConfiguration)
@@ -229,6 +238,13 @@ fun main() {
     }
 
 }
+}
+
+private fun applyWindowIcons(window: java.awt.Window) {
+    if (appIconImages.isNotEmpty()) {
+        window.iconImages = appIconImages
+    }
+    WindowsWindowIcon.apply(window)
 }
 
 private val appIconImages: List<java.awt.Image> by lazy {

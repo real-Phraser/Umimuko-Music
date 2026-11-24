@@ -91,7 +91,7 @@ public final class WindowsMediaSession implements PlatformMediaSession {
         }
     }
 
-    private static Path extractAppIcon() {
+    public static Path extractAppIcon() {
         try {
             Path dataDir = PlatformPaths.getDataDirectory();
             Files.createDirectories(dataDir);
