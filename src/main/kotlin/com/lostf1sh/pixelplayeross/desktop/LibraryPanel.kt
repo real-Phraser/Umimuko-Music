@@ -650,7 +650,7 @@ fun LibraryPanel(
                         onAdd={adding=playback.song},onQueue={queueOpen=true},
                         onSleepTimer={sleepTimerOpen=true},
                         sleepTimerState=timerState,
-                        onExit={queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)})
+                        onExit={queueOpen=false;sleepTimerOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)})
                 }
             }
         }
@@ -704,11 +704,11 @@ fun LibraryPanel(
     if(!PlatformPaths.isLinux() && playerWindowShown) {
         // Borderless maximized avoids exclusive full-screen capture restrictions on Windows.
         val playerWindowState=rememberWindowState(placement=WindowPlacement.Maximized)
-        with(applicationScope) { Window(onCloseRequest={queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)},state=playerWindowState,
+        with(applicationScope) { Window(onCloseRequest={queueOpen=false;sleepTimerOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)},state=playerWindowState,
             title="Umimuko Music · Now Playing",icon=painterResource("branding/window-icon.png"),undecorated=true,transparent=true,
             onPreviewKeyEvent={event ->
                 if(event.type==KeyEventType.KeyDown && event.key==Key.Escape) {
-                    queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false);true
+                    queueOpen=false;sleepTimerOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false);true
                 } else {
                     onPreviewShortcutKeyEvent?.invoke(event) ?: false
                 }
@@ -729,11 +729,14 @@ fun LibraryPanel(
                         onAdd={adding=playback.song},onQueue={queueOpen=true},
                         onSleepTimer={sleepTimerOpen=true},
                         sleepTimerState=timerState,
-                        onExit={queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)})
+                        onExit={queueOpen=false;sleepTimerOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false)})
                 }
                 if(queueOpen) QueueDialog(audio,onDismiss={queueOpen=false},palette=fullscreenQueuePalette,
                     onSaveQueue=if(loaded && !saving)::saveQueue else null,onOpenAlbum=::queueAlbum,onOpenArtist=::queueArtist)
                 playlistDialogs()
+                if (sleepTimerOpen && sleepTimer != null) {
+                    SleepTimerDialog(sleepTimer = sleepTimer, onDismissRequest = { sleepTimerOpen = false })
+                }
             }
         } }
     }
@@ -747,7 +750,7 @@ fun LibraryPanel(
     if (equalizerOpen) {
         EqualizerDialog(audio = audio, onDismissRequest = { equalizerOpen = false })
     }
-    if (sleepTimerOpen && sleepTimer != null) {
+    if (!playerWindowShown && sleepTimerOpen && sleepTimer != null) {
         SleepTimerDialog(sleepTimer = sleepTimer, onDismissRequest = { sleepTimerOpen = false })
     }
     if (editingSong != null) {
