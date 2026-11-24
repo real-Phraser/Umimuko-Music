@@ -241,7 +241,10 @@ fun SpicyLyricsView(
                 if (abs(delta) > 1f) {
                     listState.animateScrollBy(
                         value = delta,
-                        animationSpec = tween(durationMillis = 550, easing = FastOutSlowInEasing)
+                        animationSpec = spring(
+                            dampingRatio = 0.9f,
+                            stiffness = 120f
+                        )
                     )
                 }
             } else {
@@ -504,31 +507,37 @@ private fun SpicyLyricLineItem(
 
     val animatedAlpha by animateFloatAsState(
         targetValue = targetAlpha,
-        animationSpec = tween(420, easing = FastOutSlowInEasing)
+        animationSpec = spring(
+            dampingRatio = 0.85f,
+            stiffness = 180f
+        )
     )
     val animatedScale by animateFloatAsState(
         targetValue = targetScale,
         animationSpec = spring(
-            dampingRatio = 0.72f,
-            stiffness = 260f
+            dampingRatio = 0.85f,
+            stiffness = 180f
         )
     )
     val animatedBlur by animateDpAsState(
         targetValue = targetBlur,
-        animationSpec = tween(420, easing = FastOutSlowInEasing)
+        animationSpec = spring(
+            dampingRatio = 0.85f,
+            stiffness = 180f
+        )
     )
     val animatedOffsetX by animateDpAsState(
         targetValue = targetOffsetX,
         animationSpec = spring(
-            dampingRatio = 0.78f,
-            stiffness = 260f
+            dampingRatio = 0.85f,
+            stiffness = 180f
         )
     )
     val animatedOffsetY by animateDpAsState(
         targetValue = targetOffsetY,
         animationSpec = spring(
-            dampingRatio = 0.78f,
-            stiffness = 260f
+            dampingRatio = 0.85f,
+            stiffness = 180f
         )
     )
 
@@ -585,7 +594,10 @@ private fun SpicyLyricLineItem(
                     isActive -> lerp(onBackgroundColor, accentColor, 0.16f)
                     else -> onBackgroundColor
                 },
-                animationSpec = tween(420, easing = FastOutSlowInEasing)
+                animationSpec = spring(
+                    dampingRatio = 0.85f,
+                    stiffness = 180f
+                )
             )
             val shadow = if (isActive) {
                 Shadow(
@@ -688,6 +700,20 @@ private fun SpicyLyricLineItem(
     }
 }
 
+private data class WordGroup(
+    val syllables: List<SpicySyllable>,
+    val startTimeMs: Long,
+    val endTimeMs: Long,
+    val isSplitWord: Boolean
+)
+
+private fun List<SpicySyllable>.toWordGroup(): WordGroup = WordGroup(
+    syllables = toList(),
+    startTimeMs = minOf { it.startTimeMs },
+    endTimeMs = maxOf { it.endTimeMs },
+    isSplitWord = size > 1 || firstOrNull()?.isPartOfWord == true
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SyllableSweepLine(
@@ -702,25 +728,27 @@ private fun SyllableSweepLine(
     lineHeight: TextUnit,
     baseWeight: FontWeight = FontWeight.ExtraBold
 ) {
-    // Group syllables into words so split words have zero extra space and never wrap mid-word.
+    // Group syllables into words so split words have zero extra space, never wrap mid-word,
+    // and lift/scale as a single unified word.
     val words = remember(syllables) {
         buildList {
             var currentWord = mutableListOf<SpicySyllable>()
             for (syl in syllables) {
                 currentWord.add(syl)
                 if (!syl.isPartOfWord) {
-                    add(currentWord.toList())
+                    add(currentWord.toWordGroup())
                     currentWord = mutableListOf()
                 }
             }
             if (currentWord.isNotEmpty()) {
-                add(currentWord.toList())
+                add(currentWord.toWordGroup())
             }
         }
     }
 
     val density = LocalDensity.current
-    val liftPx = with(density) { (-4.5f).dp.toPx() }
+    val wholeLiftPx = with(density) { (-3.0f).dp.toPx() }
+    val splitLiftPx = with(density) { (-2.2f).dp.toPx() }
     val litColor = onBackgroundColor
     val unlitColor = onBackgroundColor.copy(alpha = if (isLineActive) 0.34f else 0.72f)
     val glowCoreColor = remember(accentColor) { lerp(accentColor, Color(0xFFFFE4B5), 0.28f) }
@@ -747,20 +775,23 @@ private fun SyllableSweepLine(
         ),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        words.forEach { wordSyllables ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                wordSyllables.forEach { syl ->
-                    Box(
-                        modifier = Modifier.graphicsLayer {
-                            if (isLineActive && !isLinePast) {
-                                val env = syllableSingingEnvelope(syl, timeProvider())
-                                translationY = liftPx * env
-                                val s = 1f + 0.06f * env
-                                scaleX = s
-                                scaleY = s
-                            }
-                        }
-                    ) {
+        words.forEach { word ->
+            val wordLiftPx = if (word.isSplitWord) splitLiftPx else wholeLiftPx
+            val wordScaleBoost = if (word.isSplitWord) 0.03f else 0.04f
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.graphicsLayer {
+                    if (isLineActive && !isLinePast) {
+                        val env = singingEnvelope(word.startTimeMs, word.endTimeMs, timeProvider())
+                        translationY = wordLiftPx * env
+                        val s = 1f + wordScaleBoost * env
+                        scaleX = s
+                        scaleY = s
+                    }
+                }
+            ) {
+                word.syllables.forEach { syl ->
+                    Box {
                         if (isLineActive && !isLinePast) {
                             Text(
                                 text = syl.text,
@@ -768,7 +799,7 @@ private fun SyllableSweepLine(
                                 modifier = Modifier
                                     .blur(5.dp, BlurredEdgeTreatment.Unbounded)
                                     .graphicsLayer {
-                                        val env = syllableSingingEnvelope(syl, timeProvider())
+                                        val env = singingEnvelope(syl.startTimeMs, syl.endTimeMs, timeProvider())
                                         alpha = (env * 0.22f).coerceIn(0f, 0.22f)
                                     }
                             )
@@ -820,29 +851,39 @@ private fun SyllableSweepLine(
     }
 }
 
+private const val ENVELOPE_ANTICIPATION_MS = 100L
+private const val ENVELOPE_ATTACK_TOTAL_MS = 140f
+private const val ENVELOPE_RELEASE_MS = 220f
+
+private fun smootherStep(t: Float): Float {
+    val x = t.coerceIn(0f, 1f)
+    return x * x * x * (x * (x * 6f - 15f) + 10f)
+}
+
+/**
+ * Smooth anticipation-and-tail envelope for word lift/scale and syllable bloom.
+ * Ramps in ~100ms before [startTimeMs] and settles over ~220ms after [endTimeMs].
+ */
+private fun singingEnvelope(startTimeMs: Long, endTimeMs: Long, nowMs: Long): Float {
+    val attackStart = startTimeMs - ENVELOPE_ANTICIPATION_MS
+    if (nowMs <= attackStart) return 0f
+    if (nowMs >= endTimeMs + ENVELOPE_RELEASE_MS.toLong()) return 0f
+
+    val attack = smootherStep((nowMs - attackStart) / ENVELOPE_ATTACK_TOTAL_MS)
+    val release = if (nowMs <= endTimeMs) {
+        1f
+    } else {
+        1f - smootherStep((nowMs - endTimeMs) / ENVELOPE_RELEASE_MS)
+    }
+    return minOf(attack, release)
+}
+
 private fun syllableProgress(syl: SpicySyllable, nowMs: Long): Float = when {
     nowMs <= syl.startTimeMs -> 0f
     nowMs >= syl.endTimeMs -> 1f
     syl.endTimeMs <= syl.startTimeMs -> 1f
     else -> ((nowMs - syl.startTimeMs).toFloat() /
         (syl.endTimeMs - syl.startTimeMs).toFloat()).coerceIn(0f, 1f)
-}
-
-private fun syllableSingingEnvelope(syl: SpicySyllable, nowMs: Long): Float {
-    if (nowMs <= syl.startTimeMs) return 0f
-    val attackRaw = ((nowMs - syl.startTimeMs) / 85f).coerceIn(0f, 1f)
-    // Ease-out cubic for snappy upward float as the syllable begins
-    val invAttack = 1f - attackRaw
-    val attack = 1f - invAttack * invAttack * invAttack
-    val release = if (nowMs <= syl.endTimeMs) {
-        1f
-    } else {
-        // Smooth spring-like settle back to baseline after the syllable is sung
-        val settle = ((nowMs - syl.endTimeMs) / 220f).coerceIn(0f, 1f)
-        val smooth = settle * settle * (3f - 2f * settle)
-        1f - smooth
-    }
-    return minOf(attack, release)
 }
 
 @Composable
