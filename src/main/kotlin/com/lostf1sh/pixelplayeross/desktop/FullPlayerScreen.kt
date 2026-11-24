@@ -5,6 +5,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,13 +21,22 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -41,8 +52,11 @@ import com.lostf1sh.pixelplayeross.desktop.playback.AudioController
 import com.lostf1sh.pixelplayeross.desktop.playback.RepeatMode
 import com.lostf1sh.pixelplayeross.desktop.theme.FullPlayerAmbientColors
 import com.lostf1sh.pixelplayeross.desktop.theme.ThemeManager
+import com.lostf1sh.pixelplayeross.desktop.theme.ThemePreset
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.nio.file.Files
+import java.nio.file.Path
 
 @Composable
 fun FullPlayerScreen(
@@ -84,25 +98,6 @@ fun FullPlayerScreen(
         ThemeManager.resolveFullPlayerAmbientColors(state.song?.accentArgb, currentPreset)
     }
 
-    // Dynamic ambient glow animation
-    val infiniteTransition = rememberInfiniteTransition()
-    val ambientPulse by infiniteTransition.animateFloat(
-        initialValue = 0.22f,
-        targetValue = 0.38f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        )
-    )
-
-    val backgroundGradient = remember(ambientColors, ambientPulse) {
-        val primaryGlow = lerp(ambientColors.glowBase, ambientColors.glowAccent, ambientPulse)
-        Brush.radialGradient(
-            colors = listOf(primaryGlow, ambientColors.deepBackground),
-            radius = 1600f
-        )
-    }
-
     val fullColors = remember(currentPreset, state.song?.accentArgb, ambientColors) {
         resolveFullPlayerContrastColors(
             baseScheme = ThemeManager.resolveFullPlayerColorScheme(state.song?.accentArgb),
@@ -113,12 +108,19 @@ fun FullPlayerScreen(
     MaterialTheme(colorScheme = fullColors, typography = MaterialTheme.typography) {
         val colors = MaterialTheme.colorScheme
         CompositionLocalProvider(LocalContentColor provides colors.onBackground) {
-            BoxWithConstraints(
-                Modifier
-                    .fillMaxSize()
-                    .background(backgroundGradient)
-                    .padding(28.dp)
-            ) {
+            Box(Modifier.fillMaxSize()) {
+                FullPlayerAmbientBackground(
+                    ambientColors = ambientColors,
+                    secondaryColor = fullColors.secondary,
+                    tertiaryColor = fullColors.tertiary,
+                    isDynamicPreset = currentPreset == ThemePreset.DYNAMIC,
+                    coverPath = state.song?.coverPath
+                )
+                BoxWithConstraints(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(28.dp)
+                ) {
                 val isWide = maxWidth >= 840.dp
 
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -295,6 +297,212 @@ fun FullPlayerScreen(
                 }
             }
         }
+    }
+}
+}
+
+/**
+ * Renders an organic, multi-layered ambient flow background for the fullscreen player.
+ * Combines a heavily blurred, slowly drifting album-cover texture (in dynamic mode) with
+ * overlapping, stretched elliptical color washes so there is no single circular spotlight.
+ */
+@Composable
+private fun FullPlayerAmbientBackground(
+    ambientColors: FullPlayerAmbientColors,
+    secondaryColor: Color,
+    tertiaryColor: Color,
+    isDynamicPreset: Boolean,
+    coverPath: String?
+) {
+    val deepBg by animateColorAsState(ambientColors.deepBackground, tween(900))
+    val glowBase by animateColorAsState(ambientColors.glowBase, tween(900))
+    val glowAccent by animateColorAsState(ambientColors.glowAccent, tween(900))
+    val secondary by animateColorAsState(secondaryColor, tween(900))
+    val tertiary by animateColorAsState(tertiaryColor, tween(900))
+
+    val coverBitmap by produceState<ImageBitmap?>(null, coverPath, isDynamicPreset) {
+        value = null
+        if (isDynamicPreset && coverPath != null) {
+            value = withContext(Dispatchers.IO) {
+                try {
+                    org.jetbrains.skia.Image.makeFromEncoded(Files.readAllBytes(Path.of(coverPath))).toComposeImageBitmap()
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition()
+    val driftPrimary by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(13000, easing = FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        )
+    )
+    val driftSecondary by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(17000, easing = FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        )
+    )
+    val driftTertiary by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(21000, easing = FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        )
+    )
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(deepBg)
+            .clipToBounds()
+    ) {
+        // Multi-stop diagonal base wash
+        Canvas(Modifier.fillMaxSize()) {
+            drawRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        lerp(deepBg, glowBase, 0.75f),
+                        deepBg,
+                        lerp(deepBg, glowAccent, 0.16f)
+                    ),
+                    start = Offset.Zero,
+                    end = Offset(size.width, size.height)
+                )
+            )
+        }
+
+        // Blurred, zoomed, slowly drifting album-cover texture in Dynamic mode
+        val loadedCover = coverBitmap
+        if (isDynamicPreset && loadedCover != null) {
+            Image(
+                bitmap = loadedCover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.Low,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = 1.65f + driftPrimary * 0.14f
+                        scaleY = 1.65f + driftSecondary * 0.14f
+                        translationX = (driftPrimary - 0.5f) * 80f
+                        translationY = (driftSecondary - 0.5f) * 60f
+                        rotationZ = (driftTertiary - 0.5f) * 14f
+                        alpha = 0.28f
+                    }
+                    .blur(96.dp, BlurredEdgeTreatment.Unbounded)
+            )
+            // Protective scrim to preserve contrast-ratio guarantees on bright covers
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                deepBg.copy(alpha = 0.52f),
+                                deepBg.copy(alpha = 0.36f),
+                                deepBg.copy(alpha = 0.58f)
+                            )
+                        )
+                    )
+            )
+        }
+
+        // Overlapping, stretched elliptical color washes
+        Canvas(Modifier.fillMaxSize()) {
+            val maxDim = maxOf(size.width, size.height).coerceAtLeast(1f)
+            val primaryWash = lerp(glowBase, glowAccent, 0.24f + driftPrimary * 0.12f)
+            val secondaryWash = lerp(glowBase, secondary, 0.22f + driftSecondary * 0.10f)
+            val tertiaryWash = lerp(deepBg, tertiary, 0.20f + driftTertiary * 0.10f)
+            val bridgeWash = lerp(glowBase, glowAccent, 0.18f + (1f - driftPrimary) * 0.10f)
+
+            drawAmbientEllipse(
+                center = Offset(
+                    x = size.width * (0.18f + driftPrimary * 0.14f),
+                    y = size.height * (0.22f + driftSecondary * 0.12f)
+                ),
+                radius = maxDim * 0.62f,
+                scaleX = 1.85f,
+                scaleY = 0.88f,
+                rotationDeg = -22f + driftTertiary * 12f,
+                color = primaryWash,
+                peakAlpha = 0.56f
+            )
+            drawAmbientEllipse(
+                center = Offset(
+                    x = size.width * (0.82f - driftSecondary * 0.15f),
+                    y = size.height * (0.76f - driftPrimary * 0.12f)
+                ),
+                radius = maxDim * 0.68f,
+                scaleX = 1.75f,
+                scaleY = 0.92f,
+                rotationDeg = 28f - driftPrimary * 10f,
+                color = secondaryWash,
+                peakAlpha = 0.50f
+            )
+            drawAmbientEllipse(
+                center = Offset(
+                    x = size.width * (0.76f - driftTertiary * 0.14f),
+                    y = size.height * (0.20f + driftPrimary * 0.14f)
+                ),
+                radius = maxDim * 0.56f,
+                scaleX = 1.60f,
+                scaleY = 0.85f,
+                rotationDeg = 14f + driftSecondary * 14f,
+                color = tertiaryWash,
+                peakAlpha = 0.44f
+            )
+            drawAmbientEllipse(
+                center = Offset(
+                    x = size.width * (0.28f + driftTertiary * 0.16f),
+                    y = size.height * (0.78f - driftSecondary * 0.10f)
+                ),
+                radius = maxDim * 0.60f,
+                scaleX = 1.90f,
+                scaleY = 0.82f,
+                rotationDeg = -36f + driftPrimary * 10f,
+                color = bridgeWash,
+                peakAlpha = 0.42f
+            )
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawAmbientEllipse(
+    center: Offset,
+    radius: Float,
+    scaleX: Float,
+    scaleY: Float,
+    rotationDeg: Float,
+    color: Color,
+    peakAlpha: Float
+) {
+    withTransform({
+        translate(left = center.x, top = center.y)
+        rotate(degrees = rotationDeg, pivot = Offset.Zero)
+        scale(scaleX = scaleX, scaleY = scaleY, pivot = Offset.Zero)
+    }) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                colorStops = arrayOf(
+                    0.0f to color.copy(alpha = peakAlpha),
+                    0.45f to color.copy(alpha = peakAlpha * 0.42f),
+                    1.0f to Color.Transparent
+                ),
+                center = Offset.Zero,
+                radius = radius
+            ),
+            radius = radius,
+            center = Offset.Zero
+        )
     }
 }
 
