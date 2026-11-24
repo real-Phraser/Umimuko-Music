@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -15,8 +14,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -39,7 +38,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +69,8 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -228,16 +228,44 @@ fun SpicyLyricsView(
             else -> return@LaunchedEffect
         }
 
-        val viewportHeight = listState.layoutInfo.viewportSize.height
-        val centerOffset = if (viewportHeight > 0) -(viewportHeight * 0.32f).toInt() else -160
+        val layoutInfo = listState.layoutInfo
+        val viewportHeight = layoutInfo.viewportSize.height
+        val sweetSpotFromTop = if (viewportHeight > 0) (viewportHeight * 0.32f).toInt() else 160
+        val visibleItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetItemIndex }
+
         isProgrammaticScroll = true
         try {
-            listState.animateScrollToItem(targetItemIndex, centerOffset)
+            if (visibleItem != null) {
+                val desiredOffset = layoutInfo.viewportStartOffset + sweetSpotFromTop
+                val delta = (visibleItem.offset - desiredOffset).toFloat()
+                if (abs(delta) > 1f) {
+                    listState.animateScrollBy(
+                        value = delta,
+                        animationSpec = tween(durationMillis = 550, easing = FastOutSlowInEasing)
+                    )
+                }
+            } else {
+                listState.animateScrollToItem(targetItemIndex, -sweetSpotFromTop)
+            }
         } finally {
             delay(80L)
             isProgrammaticScroll = false
         }
     }
+
+    var hasEntered by remember(lyrics) { mutableStateOf(false) }
+    LaunchedEffect(lyrics) {
+        hasEntered = true
+    }
+    val entranceAlpha by animateFloatAsState(
+        targetValue = if (hasEntered) 1f else 0f,
+        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing)
+    )
+    val entranceOffsetY by animateDpAsState(
+        targetValue = if (hasEntered) 0.dp else 18.dp,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 280f)
+    )
+    val entranceDensity = LocalDensity.current
 
     val showRomanized = SpicyLyricsService.showRomanized
     val introGapStart = remember(lyrics, firstLine) {
@@ -259,7 +287,11 @@ fun SpicyLyricsView(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .graphicsLayer {
+                    compositingStrategy = CompositingStrategy.Offscreen
+                    alpha = entranceAlpha
+                    translationY = with(entranceDensity) { entranceOffsetY.toPx() }
+                }
                 .drawWithContent {
                     drawContent()
                     drawRect(
@@ -444,7 +476,7 @@ private fun SpicyLyricLineItem(
     }
     val targetScale = when {
         isStatic || activeIndex < 0 -> 1.0f
-        isActive -> 1.02f
+        isActive -> 1.04f
         isHovered -> 1.0f
         else -> when (distance) {
             1 -> 0.97f
@@ -458,23 +490,49 @@ private fun SpicyLyricLineItem(
         distance == 2 -> 2.dp
         else -> 3.dp
     }
+    val targetOffsetX = when {
+        isStatic || activeIndex < 0 -> 0.dp
+        isActive -> if (line.oppositeAligned) (-4).dp else 4.dp
+        else -> 0.dp
+    }
+    val targetOffsetY = when {
+        isStatic || activeIndex < 0 -> 0.dp
+        isActive -> (-2).dp
+        index < activeIndex -> (-3).dp
+        else -> 3.dp
+    }
 
     val animatedAlpha by animateFloatAsState(
         targetValue = targetAlpha,
-        animationSpec = tween(340, easing = FastOutSlowInEasing)
+        animationSpec = tween(420, easing = FastOutSlowInEasing)
     )
     val animatedScale by animateFloatAsState(
         targetValue = targetScale,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
+            dampingRatio = 0.72f,
+            stiffness = 260f
         )
     )
     val animatedBlur by animateDpAsState(
         targetValue = targetBlur,
-        animationSpec = tween(320, easing = FastOutSlowInEasing)
+        animationSpec = tween(420, easing = FastOutSlowInEasing)
+    )
+    val animatedOffsetX by animateDpAsState(
+        targetValue = targetOffsetX,
+        animationSpec = spring(
+            dampingRatio = 0.78f,
+            stiffness = 260f
+        )
+    )
+    val animatedOffsetY by animateDpAsState(
+        targetValue = targetOffsetY,
+        animationSpec = spring(
+            dampingRatio = 0.78f,
+            stiffness = 260f
+        )
     )
 
+    val density = LocalDensity.current
     val horizontalAlignment = if (line.oppositeAligned) Alignment.End else Alignment.Start
     val textAlign = if (line.oppositeAligned) TextAlign.End else TextAlign.Start
     val transformOrigin = TransformOrigin(if (line.oppositeAligned) 1f else 0f, 0.5f)
@@ -494,12 +552,11 @@ private fun SpicyLyricLineItem(
                 alpha = animatedAlpha
                 scaleX = animatedScale
                 scaleY = animatedScale
+                translationX = with(density) { animatedOffsetX.toPx() }
+                translationY = with(density) { animatedOffsetY.toPx() }
                 this.transformOrigin = transformOrigin
             }
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                if (isHovered) onBackgroundColor.copy(alpha = 0.06f) else Color.Transparent
-            )
+            .pointerHoverIcon(PointerIcon.Hand)
             .hoverable(interactionSource = interactionSource)
             .clickable(
                 interactionSource = interactionSource,
@@ -528,7 +585,7 @@ private fun SpicyLyricLineItem(
                     isActive -> lerp(onBackgroundColor, accentColor, 0.16f)
                     else -> onBackgroundColor
                 },
-                animationSpec = tween(320, easing = FastOutSlowInEasing)
+                animationSpec = tween(420, easing = FastOutSlowInEasing)
             )
             val shadow = if (isActive) {
                 Shadow(
@@ -663,9 +720,10 @@ private fun SyllableSweepLine(
     }
 
     val density = LocalDensity.current
-    val liftPx = with(density) { (-3).dp.toPx() }
+    val liftPx = with(density) { (-4.5f).dp.toPx() }
     val litColor = onBackgroundColor
     val unlitColor = onBackgroundColor.copy(alpha = if (isLineActive) 0.34f else 0.72f)
+    val glowCoreColor = remember(accentColor) { lerp(accentColor, Color(0xFFFFE4B5), 0.28f) }
 
     // Static TextStyle with no per-frame Brush or Shadow so Skia builds TextParagraph and caches glyphs once.
     val staticTextStyle = remember(fontSize, lineHeight, baseWeight) {
@@ -697,7 +755,7 @@ private fun SyllableSweepLine(
                                 if (isLineActive && !isLinePast) {
                                     val env = syllableSingingEnvelope(syl, timeProvider())
                                     translationY = liftPx * env
-                                    val s = 1f + 0.04f * env
+                                    val s = 1f + 0.06f * env
                                     scaleX = s
                                     scaleY = s
                                 }
@@ -707,14 +765,15 @@ private fun SyllableSweepLine(
                                     val nowMs = timeProvider()
                                     val progress = syllableProgress(syl, nowMs)
                                     val env = syllableSingingEnvelope(syl, nowMs)
-                                    val glowAlpha = (0.16f * progress + 0.32f * env).coerceIn(0f, 0.50f)
+                                    val glowAlpha = (0.20f * progress + 0.42f * env).coerceIn(0f, 0.62f)
                                     if (glowAlpha > 0.01f) {
-                                        val radius = maxOf(size.width, size.height) * 0.95f
+                                        val radius = maxOf(size.width, size.height) * 1.15f
                                         if (radius > 0f) {
                                             drawCircle(
                                                 brush = Brush.radialGradient(
                                                     colors = listOf(
-                                                        accentColor.copy(alpha = glowAlpha),
+                                                        glowCoreColor.copy(alpha = glowAlpha),
+                                                        accentColor.copy(alpha = glowAlpha * 0.45f),
                                                         Color.Transparent
                                                     ),
                                                     center = center,
@@ -779,14 +838,19 @@ private fun syllableProgress(syl: SpicySyllable, nowMs: Long): Float = when {
 
 private fun syllableSingingEnvelope(syl: SpicySyllable, nowMs: Long): Float {
     if (nowMs <= syl.startTimeMs) return 0f
-    val attack = ((nowMs - syl.startTimeMs) / 75f).coerceIn(0f, 1f)
+    val attackRaw = ((nowMs - syl.startTimeMs) / 85f).coerceIn(0f, 1f)
+    // Ease-out cubic for snappy upward float as the syllable begins
+    val invAttack = 1f - attackRaw
+    val attack = 1f - invAttack * invAttack * invAttack
     val release = if (nowMs <= syl.endTimeMs) {
         1f
     } else {
-        (1f - (nowMs - syl.endTimeMs) / 140f).coerceIn(0f, 1f)
+        // Smooth spring-like settle back to baseline after the syllable is sung
+        val settle = ((nowMs - syl.endTimeMs) / 220f).coerceIn(0f, 1f)
+        val smooth = settle * settle * (3f - 2f * settle)
+        1f - smooth
     }
-    val t = minOf(attack, release)
-    return t * t * (3f - 2f * t)
+    return minOf(attack, release)
 }
 
 @Composable
