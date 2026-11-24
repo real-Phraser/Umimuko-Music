@@ -17,8 +17,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,10 +53,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,6 +74,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.animateDpAsState
 import com.lostf1sh.pixelplayeross.desktop.Glyph
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -132,7 +140,7 @@ fun SpicyLyricsView(
         }
     }
 
-    // Smooth auto-scroll centering the active line (or intro dots before first line)
+    // Smooth auto-scroll positioning the active line in the upper-middle sweet spot (~32% from top)
     LaunchedEffect(activeIndex, showIntroDots, userScrolled, isStatic) {
         if (isStatic || userScrolled) return@LaunchedEffect
 
@@ -143,7 +151,7 @@ fun SpicyLyricsView(
         }
 
         val viewportHeight = listState.layoutInfo.viewportSize.height
-        val centerOffset = if (viewportHeight > 0) -(viewportHeight / 3) else -120
+        val centerOffset = if (viewportHeight > 0) -(viewportHeight * 0.32f).toInt() else -160
         isProgrammaticScroll = true
         try {
             listState.animateScrollToItem(targetItemIndex, centerOffset)
@@ -154,13 +162,36 @@ fun SpicyLyricsView(
     }
 
     val showRomanized = SpicyLyricsService.showRomanized
+    val introGapStart = remember(lyrics, firstLine) {
+        if (firstLine == null) 0L else lyrics.startTimeMs.coerceAtMost(firstLine.startTimeMs)
+    }
+    val introProgress = if (firstLine != null) {
+        ((currentTimeMs - introGapStart).toFloat() /
+            (firstLine.startTimeMs - introGapStart).coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(top = 140.dp, bottom = 220.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0.0f to Color.Transparent,
+                            0.10f to Color.Black,
+                            0.85f to Color.Black,
+                            1.0f to Color.Transparent
+                        ),
+                        blendMode = BlendMode.DstIn
+                    )
+                },
+            verticalArrangement = Arrangement.spacedBy(22.dp),
+            contentPadding = PaddingValues(top = 120.dp, bottom = 260.dp)
         ) {
             // Item 0: Intro instrumental dots before the first line
             item(key = "intro-dots") {
@@ -170,10 +201,11 @@ fun SpicyLyricsView(
                     exit = fadeOut(tween(250))
                 ) {
                     InterludeDotsRow(
+                        progress = introProgress,
                         accentColor = accentColor,
                         onBackgroundColor = onBackgroundColor,
                         oppositeAligned = firstLine?.oppositeAligned == true,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                     )
                 }
             }
@@ -189,6 +221,12 @@ fun SpicyLyricsView(
                 val showGapDots = hasLongGapAfter &&
                     currentTimeMs >= line.endTimeMs &&
                     currentTimeMs < nextLine!!.startTimeMs
+                val gapProgress = if (hasLongGapAfter) {
+                    ((currentTimeMs - line.endTimeMs).toFloat() /
+                        (nextLine!!.startTimeMs - line.endTimeMs).coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
 
                 Column(modifier = Modifier.fillMaxWidth()) {
                     SpicyLyricLineItem(
@@ -198,6 +236,7 @@ fun SpicyLyricsView(
                         lyricsType = lyrics.type,
                         currentTimeMs = currentTimeMs,
                         showRomanized = showRomanized,
+                        isUserScrolling = userScrolled,
                         onBackgroundColor = onBackgroundColor,
                         accentColor = accentColor,
                         onClick = {
@@ -213,14 +252,15 @@ fun SpicyLyricsView(
                             exit = fadeOut(tween(250))
                         ) {
                             InterludeDotsRow(
+                                progress = gapProgress,
                                 accentColor = accentColor,
                                 onBackgroundColor = onBackgroundColor,
                                 oppositeAligned = nextLine?.oppositeAligned == true,
                                 modifier = Modifier.padding(
-                                    start = 12.dp,
-                                    end = 12.dp,
-                                    top = 12.dp,
-                                    bottom = 4.dp
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = 18.dp,
+                                    bottom = 6.dp
                                 )
                             )
                         }
@@ -240,32 +280,6 @@ fun SpicyLyricsView(
                 }
             }
         }
-
-        // Top soft edge fade
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-                .align(Alignment.TopCenter)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(fadeColor.copy(alpha = 0.88f), Color.Transparent)
-                    )
-                )
-        )
-
-        // Bottom soft edge fade
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(96.dp)
-                .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.Transparent, fadeColor.copy(alpha = 0.88f))
-                    )
-                )
-        )
 
         // "Resume Sync" pill when user manually scrolled
         AnimatedVisibility(
@@ -307,37 +321,54 @@ private fun SpicyLyricLineItem(
     lyricsType: SpicyLyricsType,
     currentTimeMs: Long,
     showRomanized: Boolean,
+    isUserScrolling: Boolean,
     onBackgroundColor: Color,
     accentColor: Color,
     onClick: () -> Unit
 ) {
     val isStatic = lyricsType == SpicyLyricsType.STATIC
     val isActive = !isStatic && index == activeIndex
+    val distance = if (activeIndex < 0) 0 else abs(index - activeIndex)
 
-    val targetAlpha = when {
-        isStatic -> 0.90f
-        activeIndex < 0 -> 0.52f
-        else -> when (abs(index - activeIndex)) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+
+    val distanceAlpha = when {
+        isStatic -> 0.92f
+        activeIndex < 0 -> 0.55f
+        else -> when (distance) {
             0 -> 1.0f
-            1 -> 0.56f
-            2 -> 0.36f
-            3 -> 0.24f
-            else -> 0.16f
+            1 -> 0.42f
+            2 -> 0.30f
+            else -> 0.22f
         }
+    }
+    val targetAlpha = when {
+        isStatic -> 0.92f
+        isHovered -> 0.94f
+        isUserScrolling -> maxOf(0.65f, distanceAlpha)
+        else -> distanceAlpha
     }
     val targetScale = when {
         isStatic || activeIndex < 0 -> 1.0f
-        else -> when (abs(index - activeIndex)) {
-            0 -> 1.0f
-            1 -> 0.96f
-            2 -> 0.93f
-            else -> 0.90f
+        isActive -> 1.02f
+        isHovered -> 1.0f
+        else -> when (distance) {
+            1 -> 0.97f
+            2 -> 0.94f
+            else -> 0.92f
         }
+    }
+    val targetBlur = when {
+        isStatic || isActive || isHovered || isUserScrolling || activeIndex < 0 -> 0.dp
+        distance == 1 -> 1.dp
+        distance == 2 -> 2.dp
+        else -> 3.dp
     }
 
     val animatedAlpha by animateFloatAsState(
         targetValue = targetAlpha,
-        animationSpec = tween(360, easing = FastOutSlowInEasing)
+        animationSpec = tween(340, easing = FastOutSlowInEasing)
     )
     val animatedScale by animateFloatAsState(
         targetValue = targetScale,
@@ -345,6 +376,10 @@ private fun SpicyLyricLineItem(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMediumLow
         )
+    )
+    val animatedBlur by animateDpAsState(
+        targetValue = targetBlur,
+        animationSpec = tween(320, easing = FastOutSlowInEasing)
     )
 
     val horizontalAlignment = if (line.oppositeAligned) Alignment.End else Alignment.Start
@@ -355,22 +390,30 @@ private fun SpicyLyricLineItem(
         horizontalAlignment = horizontalAlignment,
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (animatedBlur > 0.1.dp) {
+                    Modifier.blur(animatedBlur, BlurredEdgeTreatment.Unbounded)
+                } else {
+                    Modifier
+                }
+            )
             .graphicsLayer {
                 alpha = animatedAlpha
                 scaleX = animatedScale
                 scaleY = animatedScale
                 this.transformOrigin = transformOrigin
             }
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(
-                if (isActive) accentColor.copy(alpha = 0.08f) else Color.Transparent
+                if (isHovered) onBackgroundColor.copy(alpha = 0.06f) else Color.Transparent
             )
+            .hoverable(interactionSource = interactionSource)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         if (lyricsType == SpicyLyricsType.SYLLABLE && line.syllables.isNotEmpty()) {
             SyllableSweepLine(
@@ -381,23 +424,24 @@ private fun SpicyLyricLineItem(
                 oppositeAligned = line.oppositeAligned,
                 onBackgroundColor = onBackgroundColor,
                 accentColor = accentColor,
-                fontSize = 22.sp,
-                lineHeight = 30.sp
+                fontSize = 28.sp,
+                lineHeight = 36.sp,
+                baseWeight = FontWeight.ExtraBold
             )
         } else {
             val lineColor by animateColorAsState(
                 targetValue = when {
                     isStatic -> onBackgroundColor
-                    isActive -> lerp(onBackgroundColor, accentColor, 0.2f)
+                    isActive -> lerp(onBackgroundColor, accentColor, 0.16f)
                     else -> onBackgroundColor
                 },
                 animationSpec = tween(320, easing = FastOutSlowInEasing)
             )
             val shadow = if (isActive) {
                 Shadow(
-                    color = accentColor.copy(alpha = 0.45f),
+                    color = accentColor.copy(alpha = 0.42f),
                     offset = Offset.Zero,
-                    blurRadius = 14f
+                    blurRadius = 16f
                 )
             } else {
                 null
@@ -405,9 +449,10 @@ private fun SpicyLyricLineItem(
             Text(
                 text = line.text.ifBlank { "♪" },
                 style = TextStyle(
-                    fontSize = 22.sp,
-                    lineHeight = 30.sp,
-                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
+                    fontSize = 28.sp,
+                    lineHeight = 36.sp,
+                    letterSpacing = (-0.3).sp,
+                    fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold,
                     color = lineColor,
                     textAlign = textAlign,
                     shadow = shadow
@@ -418,15 +463,15 @@ private fun SpicyLyricLineItem(
 
         // Optional romanized sub-line
         if (showRomanized && !line.romanizedText.isNullOrBlank()) {
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(5.dp))
             Text(
                 text = line.romanizedText!!,
                 style = TextStyle(
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp,
                     fontStyle = FontStyle.Italic,
                     fontWeight = FontWeight.Normal,
-                    color = onBackgroundColor.copy(alpha = if (isActive) 0.78f else 0.58f),
+                    color = onBackgroundColor.copy(alpha = if (isActive) 0.78f else 0.56f),
                     textAlign = textAlign
                 ),
                 modifier = Modifier.fillMaxWidth()
@@ -435,10 +480,10 @@ private fun SpicyLyricLineItem(
 
         // Optional background vocals sub-lines
         if (line.backgroundVocals.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Column(
                 horizontalAlignment = horizontalAlignment,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 line.backgroundVocals.forEach { bgLine ->
@@ -450,20 +495,20 @@ private fun SpicyLyricLineItem(
                             isLinePast = currentTimeMs > bgLine.endTimeMs,
                             currentTimeMs = currentTimeMs,
                             oppositeAligned = line.oppositeAligned,
-                            onBackgroundColor = onBackgroundColor.copy(alpha = 0.75f),
+                            onBackgroundColor = onBackgroundColor.copy(alpha = 0.72f),
                             accentColor = accentColor,
-                            fontSize = 15.sp,
-                            lineHeight = 21.sp,
-                            baseWeight = FontWeight.Medium
+                            fontSize = 17.sp,
+                            lineHeight = 24.sp,
+                            baseWeight = FontWeight.SemiBold
                         )
                     } else {
                         Text(
                             text = bgLine.text,
                             style = TextStyle(
-                                fontSize = 15.sp,
-                                lineHeight = 21.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = onBackgroundColor.copy(alpha = 0.62f),
+                                fontSize = 17.sp,
+                                lineHeight = 24.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = onBackgroundColor.copy(alpha = 0.58f),
                                 textAlign = textAlign
                             ),
                             modifier = Modifier.fillMaxWidth()
@@ -473,10 +518,10 @@ private fun SpicyLyricLineItem(
                         Text(
                             text = bgLine.romanizedText!!,
                             style = TextStyle(
-                                fontSize = 12.sp,
-                                lineHeight = 17.sp,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
                                 fontStyle = FontStyle.Italic,
-                                color = onBackgroundColor.copy(alpha = 0.50f),
+                                color = onBackgroundColor.copy(alpha = 0.48f),
                                 textAlign = textAlign
                             ),
                             modifier = Modifier.fillMaxWidth()
@@ -500,7 +545,7 @@ private fun SyllableSweepLine(
     accentColor: Color,
     fontSize: TextUnit,
     lineHeight: TextUnit,
-    baseWeight: FontWeight = FontWeight.Bold
+    baseWeight: FontWeight = FontWeight.ExtraBold
 ) {
     // Group syllables into words so split words have zero extra space and never wrap mid-word.
     val words = remember(syllables) {
@@ -520,17 +565,17 @@ private fun SyllableSweepLine(
     }
 
     val density = LocalDensity.current
-    val liftPx = with(density) { (-2.5).dp.toPx() }
+    val liftPx = with(density) { (-3).dp.toPx() }
     val litColor = onBackgroundColor
-    val unlitColor = onBackgroundColor.copy(alpha = if (isLineActive) 0.36f else 0.72f)
+    val unlitColor = onBackgroundColor.copy(alpha = if (isLineActive) 0.34f else 0.72f)
 
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(
-            space = 6.dp,
+            space = 7.dp,
             alignment = if (oppositeAligned) Alignment.End else Alignment.Start
         ),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         words.forEach { wordSyllables ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -549,8 +594,15 @@ private fun SyllableSweepLine(
                     val animatedLift by animateFloatAsState(
                         targetValue = if (isSyllableSinging) liftPx else 0f,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMedium
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+                    val animatedScale by animateFloatAsState(
+                        targetValue = if (isSyllableSinging) 1.04f else 1.0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
                         )
                     )
 
@@ -558,11 +610,11 @@ private fun SyllableSweepLine(
                         Shadow(
                             color = accentColor.copy(alpha = 0.65f),
                             offset = Offset.Zero,
-                            blurRadius = 16f
+                            blurRadius = 18f
                         )
                     } else if (isLineActive && progress >= 1f) {
                         Shadow(
-                            color = accentColor.copy(alpha = 0.25f),
+                            color = accentColor.copy(alpha = 0.24f),
                             offset = Offset.Zero,
                             blurRadius = 8f
                         )
@@ -571,12 +623,13 @@ private fun SyllableSweepLine(
                     }
 
                     val textStyle = if (progress > 0.001f && progress < 0.999f) {
-                        val edge = 0.08f
-                        val startFade = (progress - edge).coerceIn(0f, 1f)
-                        val endFade = (progress + edge).coerceIn(0f, 1f)
+                        val feather = 0.20f
+                        val startFade = (progress * (1f + feather) - feather).coerceIn(0f, 1f)
+                        val endFade = (progress * (1f + feather)).coerceIn(0f, 1f)
                         TextStyle(
                             fontSize = fontSize,
                             lineHeight = lineHeight,
+                            letterSpacing = (-0.3).sp,
                             fontWeight = baseWeight,
                             brush = Brush.horizontalGradient(
                                 0f to litColor,
@@ -590,6 +643,7 @@ private fun SyllableSweepLine(
                         TextStyle(
                             fontSize = fontSize,
                             lineHeight = lineHeight,
+                            letterSpacing = (-0.3).sp,
                             fontWeight = baseWeight,
                             color = if (progress >= 0.999f) litColor else unlitColor,
                             shadow = glowShadow
@@ -601,6 +655,8 @@ private fun SyllableSweepLine(
                         style = textStyle,
                         modifier = Modifier.graphicsLayer {
                             translationY = animatedLift
+                            scaleX = animatedScale
+                            scaleY = animatedScale
                         }
                     )
                 }
@@ -611,42 +667,51 @@ private fun SyllableSweepLine(
 
 @Composable
 private fun InterludeDotsRow(
+    progress: Float,
     accentColor: Color,
     onBackgroundColor: Color,
     oppositeAligned: Boolean,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition()
-    val phase by infiniteTransition.animateFloat(
+    val breathe by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 3f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         )
     )
 
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(
-            space = 8.dp,
+            space = 10.dp,
             alignment = if (oppositeAligned) Alignment.End else Alignment.Start
         ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         repeat(3) { dotIndex ->
-            val distance = abs(phase - dotIndex)
-            val pulse = (1f - (distance / 1.4f)).coerceIn(0f, 1f)
-            val dotColor = lerp(onBackgroundColor.copy(alpha = 0.30f), accentColor, pulse * 0.85f)
-            val scale = 0.82f + (0.34f * pulse)
+            val dotStart = dotIndex / 3f
+            val dotFill = ((progress - dotStart) * 3f).coerceIn(0f, 1f)
+            val isCurrentlyFilling = dotFill > 0f && dotFill < 1f
+            val pulseBoost = if (isCurrentlyFilling) breathe * 0.14f else if (progress > 0.92f) breathe * 0.10f else 0f
+            val effectiveFill = (dotFill + pulseBoost).coerceIn(0f, 1f)
+
+            val dotColor = lerp(
+                onBackgroundColor.copy(alpha = 0.28f),
+                lerp(onBackgroundColor, accentColor, 0.35f),
+                effectiveFill
+            )
+            val scale = 0.85f + (0.30f * effectiveFill)
 
             Box(
                 modifier = Modifier
-                    .size(10.dp)
+                    .size(11.dp)
                     .graphicsLayer {
                         scaleX = scale
                         scaleY = scale
-                        alpha = 0.45f + (0.55f * pulse)
+                        alpha = 0.32f + (0.68f * effectiveFill)
                     }
                     .clip(CircleShape)
                     .background(dotColor)

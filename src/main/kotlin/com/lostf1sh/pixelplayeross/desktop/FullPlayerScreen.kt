@@ -109,8 +109,6 @@ fun FullPlayerScreen(
             ambientColors = ambientColors
         )
     }
-    val isDarkBg = remember(ambientColors) { isDarkFullPlayerBackground(ambientColors) }
-    val lyricsContainerColor = if (isDarkBg) Color.Black.copy(alpha = 0.24f) else fullColors.surface.copy(alpha = 0.72f)
 
     MaterialTheme(colorScheme = fullColors, typography = MaterialTheme.typography) {
         val colors = MaterialTheme.colorScheme
@@ -202,13 +200,12 @@ fun FullPlayerScreen(
                                 )
                             }
 
-                            // Right Pane: Spicy Lyrics View
+                            // Right Pane: Spacious Spicy Lyrics Canvas
                             Box(
                                 Modifier
                                     .weight(1.3f)
                                     .fillMaxHeight()
-                                    .background(lyricsContainerColor, RoundedCornerShape(20.dp))
-                                    .padding(20.dp)
+                                    .padding(horizontal = 8.dp)
                             ) {
                                 LyricsPaneContent(
                                     lyrics = lyrics,
@@ -227,13 +224,12 @@ fun FullPlayerScreen(
                             }
                         }
                     } else if (showLyrics && !isWide) {
-                        // Narrow screen with lyrics: show full lyrics view with overlay controls
+                        // Narrow screen with lyrics: spacious lyrics canvas with overlay controls
                         Box(
                             Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .background(lyricsContainerColor, RoundedCornerShape(20.dp))
-                                .padding(16.dp)
+                                .padding(horizontal = 4.dp)
                         ) {
                             LyricsPaneContent(
                                 lyrics = lyrics,
