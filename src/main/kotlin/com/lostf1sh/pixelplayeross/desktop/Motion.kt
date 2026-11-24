@@ -103,6 +103,10 @@ object StartupPrefs {
     var crossfadeDuration: Float
         get() = try { node.getFloat("crossfadeDuration", 0.0f) } catch (e: Exception) { 0.0f }
         set(value) { try { node.putFloat("crossfadeDuration", value) } catch (e: Exception) {} }
+
+    var crossfadeCurve: String
+        get() = try { node.get("crossfadeCurve", "EQUAL_POWER") } catch (e: Exception) { "EQUAL_POWER" }
+        set(value) { try { node.put("crossfadeCurve", value) } catch (e: Exception) {} }
 }
 
 /**

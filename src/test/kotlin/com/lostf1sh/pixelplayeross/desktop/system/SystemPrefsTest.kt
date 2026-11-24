@@ -42,6 +42,7 @@ class SystemPrefsTest {
         val origBands = StartupPrefs.eqCustomBands
         val origSpeed = StartupPrefs.playbackSpeed
         val origCrossfade = StartupPrefs.crossfadeDuration
+        val origCrossfadeCurve = StartupPrefs.crossfadeCurve
 
         try {
             StartupPrefs.eqEnabled = true
@@ -61,6 +62,9 @@ class SystemPrefsTest {
 
             StartupPrefs.crossfadeDuration = 4.5f
             assertEquals(4.5f, StartupPrefs.crossfadeDuration)
+
+            StartupPrefs.crossfadeCurve = "LINEAR"
+            assertEquals("LINEAR", StartupPrefs.crossfadeCurve)
         } finally {
             StartupPrefs.eqEnabled = origEqEnabled
             StartupPrefs.eqPreset = origEqPreset
@@ -68,6 +72,7 @@ class SystemPrefsTest {
             StartupPrefs.eqCustomBands = origBands
             StartupPrefs.playbackSpeed = origSpeed
             StartupPrefs.crossfadeDuration = origCrossfade
+            StartupPrefs.crossfadeCurve = origCrossfadeCurve
         }
     }
 

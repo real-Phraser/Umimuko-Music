@@ -18,8 +18,6 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.math.cos
-import kotlin.math.sin
 
 private fun parseBands(raw: String): List<Float> {
     val parsed = raw.split(",").mapNotNull { it.trim().toFloatOrNull() }
@@ -79,6 +77,7 @@ class AudioController : AutoCloseable {
     // Crossfading state
     private var isCrossfading = false
     private var crossfadeStartTimeMs = 0L
+    private var crossfadePausedAtMs = 0L
     private var crossfadeTotalDurationMs = 0L
 
     // Listening statistics tracking
@@ -103,7 +102,9 @@ class AudioController : AutoCloseable {
                 activePreset = StartupPrefs.eqPreset
             ),
             crossfade = CrossfadeConfig(
-                durationSeconds = StartupPrefs.crossfadeDuration
+                durationSeconds = StartupPrefs.crossfadeDuration,
+                curve = CrossfadeCurve.entries.firstOrNull { it.name == StartupPrefs.crossfadeCurve }
+                    ?: CrossfadeCurve.EQUAL_POWER
             ),
             playbackRate = StartupPrefs.playbackSpeed
         )
@@ -156,7 +157,7 @@ class AudioController : AutoCloseable {
             }
         }
 
-        // Periodic state & crossfade driver (runs every 100ms for smooth transitions)
+        // Periodic state & crossfade driver (~30ms for smooth volume ramping)
         worker.scheduleWithFixedDelay({
             if (!closed.get()) commandNow {
                 val active = primaryPlayer ?: return@commandNow
@@ -186,25 +187,79 @@ class AudioController : AutoCloseable {
                 // Crossfade & Gapless lookahead orchestration
                 checkCrossfadeLookahead(active)
 
+                val currentPrimary = primaryPlayer ?: active
                 mutable.value = mutable.value.copy(
-                    playing = active.status().isPlaying,
-                    time = active.status().time().coerceAtLeast(0),
-                    duration = active.status().length().coerceAtLeast(0),
-                    seekable = active.status().isSeekable,
+                    playing = currentPrimary.status().isPlaying,
+                    time = currentPrimary.status().time().coerceAtLeast(0),
+                    duration = currentPrimary.status().length().coerceAtLeast(0),
+                    seekable = currentPrimary.status().isSeekable,
                     error = nativeError.get() ?: mutable.value.error,
                     rate = audioSettingsMutable.value.playbackRate
                 )
             }
-        }, 0, 100, TimeUnit.MILLISECONDS)
+        }, 0, CrossfadeMath.TICK_INTERVAL_MS, TimeUnit.MILLISECONDS)
+    }
+
+    private fun currentCrossfadeVolumes(): CrossfadeVolumes {
+        val elapsed = if (crossfadePausedAtMs > 0L) {
+            crossfadePausedAtMs - crossfadeStartTimeMs
+        } else {
+            System.currentTimeMillis() - crossfadeStartTimeMs
+        }
+        val progress = CrossfadeMath.computeProgress(elapsed, crossfadeTotalDurationMs)
+        return CrossfadeMath.computeVolumes(
+            progress = progress,
+            masterVolume = mutable.value.volume,
+            curve = audioSettingsMutable.value.crossfade.curve
+        )
+    }
+
+    private fun applyCrossfadeVolumes(volumes: CrossfadeVolumes) {
+        primaryPlayer?.audio()?.let { audio ->
+            audio.setMute(false)
+            audio.setVolume(volumes.outgoing)
+        }
+        standbyPlayer?.audio()?.let { audio ->
+            audio.setMute(false)
+            audio.setVolume(volumes.incoming)
+        }
+    }
+
+    private fun cancelCrossfade(restorePrimary: Boolean = true) {
+        if (!isCrossfading) return
+        isCrossfading = false
+        crossfadePausedAtMs = 0L
+        standbyPlayer?.let { standby ->
+            standby.controls().stop()
+            standby.audio().setVolume(0)
+        }
+        if (restorePrimary) {
+            primaryPlayer?.let { restoreAudioLevel(it) }
+        }
     }
 
     private fun setupPlayerListeners(player: MediaPlayer, isPrimary: Boolean) {
         player.events().addMediaPlayerEventListener(object : MediaPlayerEventAdapter() {
             override fun playing(mediaPlayer: MediaPlayer) {
                 command {
-                    if (mediaPlayer == primaryPlayer) {
-                        endHandled = false
-                        restoreAudioLevel(mediaPlayer)
+                    when (mediaPlayer) {
+                        primaryPlayer -> {
+                            endHandled = false
+                            if (isCrossfading) {
+                                applyCrossfadeVolumes(currentCrossfadeVolumes())
+                            } else {
+                                restoreAudioLevel(mediaPlayer)
+                            }
+                        }
+                        standbyPlayer -> {
+                            if (isCrossfading) {
+                                mediaPlayer.controls().setRate(audioSettingsMutable.value.playbackRate)
+                                applyEqualizerToPlayers()
+                                applyCrossfadeVolumes(currentCrossfadeVolumes())
+                            } else {
+                                mediaPlayer.audio().setVolume(0)
+                            }
+                        }
                     }
                 }
             }
@@ -217,14 +272,36 @@ class AudioController : AutoCloseable {
             }
             override fun audioDeviceChanged(mediaPlayer: MediaPlayer, audioDevice: String?) {
                 command {
-                    if (mediaPlayer == primaryPlayer) {
-                        restoreAudioLevel(mediaPlayer)
+                    when (mediaPlayer) {
+                        primaryPlayer -> {
+                            if (isCrossfading) {
+                                applyCrossfadeVolumes(currentCrossfadeVolumes())
+                            } else {
+                                restoreAudioLevel(mediaPlayer)
+                            }
+                        }
+                        standbyPlayer -> {
+                            if (isCrossfading) {
+                                applyCrossfadeVolumes(currentCrossfadeVolumes())
+                            } else {
+                                mediaPlayer.audio().setVolume(0)
+                            }
+                        }
                     }
                 }
             }
             override fun error(mediaPlayer: MediaPlayer) {
-                if (mediaPlayer == primaryPlayer) {
-                    nativeError.set("VLC could not play this file. Try another file or check its path.")
+                command {
+                    when (mediaPlayer) {
+                        primaryPlayer -> {
+                            nativeError.set("VLC could not play this file. Try another file or check its path.")
+                        }
+                        standbyPlayer -> {
+                            if (isCrossfading) {
+                                cancelCrossfade(restorePrimary = true)
+                            }
+                        }
+                    }
                 }
             }
         })
@@ -252,64 +329,62 @@ class AudioController : AutoCloseable {
     private fun checkCrossfadeLookahead(active: MediaPlayer) {
         val duration = active.status().length()
         val time = active.status().time()
-        val crossfadeSec = audioSettingsMutable.value.crossfade.durationSeconds
-        val crossfadeMs = (crossfadeSec * 1000f).toLong()
-
-        if (!active.status().isPlaying || duration <= 3000L || time <= 0L) return
-
-        val remainingMs = duration - time
+        val playbackRate = audioSettingsMutable.value.playbackRate
 
         // Case 1: Active crossfade interpolation tick
         if (isCrossfading) {
+            if (!active.status().isPlaying || crossfadePausedAtMs > 0L) return
+
             val elapsed = System.currentTimeMillis() - crossfadeStartTimeMs
-            val progress = (elapsed.toFloat() / crossfadeTotalDurationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
-            val masterVol = mutable.value.volume.toFloat()
+            val progress = CrossfadeMath.computeProgress(elapsed, crossfadeTotalDurationMs)
+            val volumes = CrossfadeMath.computeVolumes(
+                progress = progress,
+                masterVolume = mutable.value.volume,
+                curve = audioSettingsMutable.value.crossfade.curve
+            )
+            applyCrossfadeVolumes(volumes)
 
-            val (primaryVol, standbyVol) = when (audioSettingsMutable.value.crossfade.curve) {
-                CrossfadeCurve.EQUAL_POWER -> {
-                    val angle = progress * (Math.PI.toFloat() / 2f)
-                    val p = (masterVol * cos(angle)).toInt().coerceIn(0, 100)
-                    val s = (masterVol * sin(angle)).toInt().coerceIn(0, 100)
-                    p to s
-                }
-                CrossfadeCurve.LINEAR -> {
-                    val p = (masterVol * (1f - progress)).toInt().coerceIn(0, 100)
-                    val s = (masterVol * progress).toInt().coerceIn(0, 100)
-                    p to s
-                }
-            }
-
-            primaryPlayer?.audio()?.setVolume(primaryVol)
-            standbyPlayer?.audio()?.setVolume(standbyVol)
-
-            if (progress >= 1.0f || remainingMs <= 100L) {
+            val wallRemainingMs = CrossfadeMath.wallClockRemainingMs(duration, time, playbackRate)
+            if (CrossfadeMath.shouldCompleteCrossfade(progress, wallRemainingMs)) {
                 completeCrossfade()
             }
             return
         }
 
         // Case 2: Triggering new crossfade window
-        if (mutable.value.repeat == RepeatMode.ONE) return
-        if (crossfadeMs > 200L && remainingMs in 100L..crossfadeMs && !isCrossfading) {
-            val hasNext = (index < queue.size() - 1) || (mutable.value.repeat == RepeatMode.ALL)
-            if (hasNext && standbyPlayer != null) {
-                val nextIndex = if (index < queue.size() - 1) index + 1 else 0
-                val nextSong = queue.tracks().getOrNull(nextIndex)
-                if (nextSong != null) {
-                    isCrossfading = true
-                    crossfadeStartTimeMs = System.currentTimeMillis()
-                    crossfadeTotalDurationMs = remainingMs.coerceAtMost(crossfadeMs)
-                    standbyPlayer!!.audio().setVolume(0)
-                    standbyPlayer!!.controls().setRate(audioSettingsMutable.value.playbackRate)
-                    standbyPlayer!!.audio().setEqualizer(if (audioSettingsMutable.value.equalizer.enabled) activeEqualizer else null)
-                    standbyPlayer!!.media().play(nextSong.path)
-                }
-            }
+        val hasNext = (index < queue.size() - 1) || (mutable.value.repeat == RepeatMode.ALL)
+        val effectiveDurationMs = CrossfadeMath.shouldTriggerCrossfade(
+            isPlaying = active.status().isPlaying,
+            isCrossfading = isCrossfading,
+            repeatMode = mutable.value.repeat,
+            durationMs = duration,
+            positionMs = time,
+            playbackRate = playbackRate,
+            crossfadeDurationSeconds = audioSettingsMutable.value.crossfade.durationSeconds,
+            hasNextTrack = hasNext
+        ) ?: return
+
+        val standby = standbyPlayer ?: return
+        val nextIndex = if (index < queue.size() - 1) index + 1 else 0
+        val nextSong = queue.tracks().getOrNull(nextIndex) ?: return
+
+        isCrossfading = true
+        crossfadeStartTimeMs = System.currentTimeMillis()
+        crossfadePausedAtMs = 0L
+        crossfadeTotalDurationMs = effectiveDurationMs
+
+        standby.audio().setVolume(0)
+        standby.controls().setRate(playbackRate)
+        standby.audio().setEqualizer(if (audioSettingsMutable.value.equalizer.enabled) activeEqualizer else null)
+        if (!standby.media().play(nextSong.path)) {
+            cancelCrossfade(restorePrimary = true)
         }
     }
 
     private fun completeCrossfade() {
         isCrossfading = false
+        crossfadePausedAtMs = 0L
+        endHandled = false
         val currentPrimary = primaryPlayer ?: return
         val currentStandby = standbyPlayer ?: return
 
@@ -335,7 +410,7 @@ class AudioController : AutoCloseable {
 
         mutable.value = mutable.value.copy(
             song = newSong,
-            time = 0,
+            time = primaryPlayer!!.status().time().coerceAtLeast(0),
             duration = primaryPlayer!!.status().length().coerceAtLeast(0),
             playing = true,
             seekable = primaryPlayer!!.status().isSeekable,
@@ -406,10 +481,7 @@ class AudioController : AutoCloseable {
 
     fun play(song: DesktopSong, library: List<DesktopSong>) = command {
         finalizeSongListeningStats()
-        if (isCrossfading) {
-            isCrossfading = false
-            standbyPlayer?.controls()?.stop()
-        }
+        cancelCrossfade(restorePrimary = false)
         val candidate = library.indexOfFirst { track -> track.id == song.id }
         if (candidate >= 0) {
             queue.replace(library, candidate, mutable.value.shuffled)
@@ -435,10 +507,7 @@ class AudioController : AutoCloseable {
     private fun start(current: MediaPlayer, seekTo: Long = 0) {
         val song = queue.current() ?: return
         finalizeSongListeningStats()
-        if (isCrossfading) {
-            isCrossfading = false
-            standbyPlayer?.controls()?.stop()
-        }
+        cancelCrossfade(restorePrimary = false)
 
         trackStartedEpochMs = System.currentTimeMillis()
         trackListenedAccumulatedMs = 0L
@@ -474,23 +543,56 @@ class AudioController : AutoCloseable {
 
     fun toggle() = command {
         if (mutable.value.song != null) {
-            if (it.status().isPlaying) it.controls().setPause(true) else it.controls().play()
+            if (it.status().isPlaying) {
+                it.controls().setPause(true)
+                if (isCrossfading) {
+                    standbyPlayer?.controls()?.setPause(true)
+                    crossfadePausedAtMs = System.currentTimeMillis()
+                }
+            } else {
+                if (isCrossfading && crossfadePausedAtMs > 0L) {
+                    crossfadeStartTimeMs += (System.currentTimeMillis() - crossfadePausedAtMs)
+                    crossfadePausedAtMs = 0L
+                    standbyPlayer?.controls()?.play()
+                }
+                it.controls().play()
+            }
         }
     }
 
     fun resume() = command {
-        if (mutable.value.song != null && !it.status().isPlaying) it.controls().play()
+        if (mutable.value.song != null && !it.status().isPlaying) {
+            if (isCrossfading && crossfadePausedAtMs > 0L) {
+                crossfadeStartTimeMs += (System.currentTimeMillis() - crossfadePausedAtMs)
+                crossfadePausedAtMs = 0L
+                standbyPlayer?.controls()?.play()
+            }
+            it.controls().play()
+        }
     }
 
     fun pause() = command {
-        if (it.status().isPlaying) it.controls().setPause(true)
+        if (it.status().isPlaying) {
+            it.controls().setPause(true)
+            if (isCrossfading) {
+                standbyPlayer?.controls()?.setPause(true)
+                crossfadePausedAtMs = System.currentTimeMillis()
+            }
+        }
     }
 
     fun previous() = command {
         if (index < 0) return@command
         if (it.status().time() > 3000 || index == 0) {
-            if (it.status().isSeekable) it.controls().setTime(0) else start(it)
-        } else if (queue.step(-1, false)) start(it)
+            if (it.status().isSeekable) {
+                cancelCrossfade(restorePrimary = true)
+                it.controls().setTime(0)
+            } else {
+                start(it)
+            }
+        } else if (queue.step(-1, false)) {
+            start(it)
+        }
     }
 
     fun next() = command {
@@ -594,14 +696,19 @@ class AudioController : AutoCloseable {
 
     fun seek(fraction: Float) = command {
         if (it.status().isSeekable) {
+            cancelCrossfade(restorePrimary = true)
             it.controls().setTime((it.status().length() * fraction.coerceIn(0f, 1f)).toLong())
         }
     }
 
     fun volume(value: Int) = command {
         val safe = value.coerceIn(0, 100)
-        it.audio().setVolume(safe)
         mutable.value = mutable.value.copy(volume = safe)
+        if (isCrossfading) {
+            applyCrossfadeVolumes(currentCrossfadeVolumes())
+        } else {
+            it.audio().setVolume(safe)
+        }
     }
 
     // --- Audio DSP & Equalizer Controls ---
@@ -629,6 +736,7 @@ class AudioController : AutoCloseable {
         audioSettingsMutable.value = audioSettingsMutable.value.copy(
             crossfade = current.copy(curve = curve)
         )
+        StartupPrefs.crossfadeCurve = curve.name
     }
 
     fun setEqualizerEnabled(enabled: Boolean) = command {
