@@ -33,8 +33,11 @@ import com.lostf1sh.pixelplayeross.desktop.playback.RepeatMode
 import com.lostf1sh.pixelplayeross.desktop.playback.WindowsMediaSession
 import com.lostf1sh.pixelplayeross.desktop.theme.ThemeManager
 import com.lostf1sh.pixelplayeross.desktop.system.KeybindingManager
+import com.lostf1sh.pixelplayeross.desktop.system.LocalTextInputFocusTracker
 import com.lostf1sh.pixelplayeross.desktop.system.ShortcutAction
+import com.lostf1sh.pixelplayeross.desktop.system.ShortcutKeyHandler
 import com.lostf1sh.pixelplayeross.desktop.system.SleepTimer
+import com.lostf1sh.pixelplayeross.desktop.system.TextInputFocusTracker
 import com.lostf1sh.pixelplayeross.desktop.ui.SettingsDialog
 
 fun main() {
@@ -550,9 +553,40 @@ private fun FrameWindowScope.DesktopApp(
         }
     }
 
+    val textInputFocusTracker = remember { TextInputFocusTracker() }
+    val shortcutKeyHandler = remember(keybindingManager) { ShortcutKeyHandler(keybindingManager) }
+
+    fun executeShortcutAction(action: ShortcutAction) {
+        val playback = audio.state.value
+        when (action) {
+            ShortcutAction.PLAY_PAUSE -> audio.toggle()
+            ShortcutAction.NEXT_TRACK -> if (playback.next) audio.next()
+            ShortcutAction.PREV_TRACK -> if (playback.previous) audio.previous()
+            ShortcutAction.SEEK_FORWARD -> {
+                if (playback.duration > 0) {
+                    val newTime = (playback.time + 5000L).coerceAtMost(playback.duration)
+                    audio.seek(newTime.toFloat() / playback.duration.toFloat())
+                }
+            }
+            ShortcutAction.SEEK_BACKWARD -> {
+                if (playback.duration > 0) {
+                    val newTime = (playback.time - 5000L).coerceAtLeast(0L)
+                    audio.seek(newTime.toFloat() / playback.duration.toFloat())
+                }
+            }
+            ShortcutAction.VOLUME_UP -> audio.volume(playback.volume + 5)
+            ShortcutAction.VOLUME_DOWN -> audio.volume(playback.volume - 5)
+            ShortcutAction.MUTE -> onToggleMute()
+            ShortcutAction.TOGGLE_FULLSCREEN -> toggleFullscreen()
+            ShortcutAction.TOGGLE_FULL_PLAYER -> onFullPlayer(!fullPlayer)
+            ShortcutAction.TOGGLE_LYRICS -> if (!fullPlayer) onFullPlayer(true)
+        }
+    }
+
     MaterialTheme(colorScheme=colors,typography=AppTypography) {
+        CompositionLocalProvider(LocalTextInputFocusTracker provides textInputFocusTracker) {
         Surface(Modifier.fillMaxSize().onPreviewKeyEvent { event ->
-            if (event.type == KeyEventType.KeyDown) {
+            val handledSystemKey = if (event.type == KeyEventType.KeyDown) {
                 if (fullPlayer && event.key == Key.Escape) {
                     onFullPlayer(false); true
                 } else if (PlatformPaths.isMac() && event.isMetaPressed) {
@@ -566,44 +600,16 @@ private fun FrameWindowScope.DesktopApp(
                     }
                 } else false
             } else false
-        }.onKeyEvent { event ->
-            if (event.type == KeyEventType.KeyDown) {
-                val action = keybindingManager.matchAction(event, isTextInputActive = false)
-                if (action != null) {
-                    val playback = audio.state.value
-                    when (action) {
-                        ShortcutAction.PLAY_PAUSE -> { audio.toggle(); true }
-                        ShortcutAction.NEXT_TRACK -> { if (playback.next) audio.next(); true }
-                        ShortcutAction.PREV_TRACK -> { if (playback.previous) audio.previous(); true }
-                        ShortcutAction.SEEK_FORWARD -> {
-                            if (playback.duration > 0) {
-                                val newTime = (playback.time + 5000L).coerceAtMost(playback.duration)
-                                audio.seek(newTime.toFloat() / playback.duration.toFloat())
-                            }
-                            true
-                        }
-                        ShortcutAction.SEEK_BACKWARD -> {
-                            if (playback.duration > 0) {
-                                val newTime = (playback.time - 5000L).coerceAtLeast(0L)
-                                audio.seek(newTime.toFloat() / playback.duration.toFloat())
-                            }
-                            true
-                        }
-                        ShortcutAction.VOLUME_UP -> { audio.volume(playback.volume + 5); true }
-                        ShortcutAction.VOLUME_DOWN -> { audio.volume(playback.volume - 5); true }
-                        ShortcutAction.MUTE -> {
-                            onToggleMute()
-                            true
-                        }
-                        ShortcutAction.TOGGLE_FULLSCREEN -> { toggleFullscreen(); true }
-                        ShortcutAction.TOGGLE_FULL_PLAYER -> { onFullPlayer(!fullPlayer); true }
-                        ShortcutAction.TOGGLE_LYRICS -> {
-                            if (!fullPlayer) onFullPlayer(true)
-                            true
-                        }
-                    }
-                } else false
-            } else false
+
+            if (handledSystemKey) {
+                true
+            } else {
+                shortcutKeyHandler.handlePreviewKeyEvent(
+                    event = event,
+                    isTextInputActive = textInputFocusTracker.isTextInputActive,
+                    onAction = ::executeShortcutAction
+                )
+            }
         }, color = colors.background) {
             Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
@@ -641,6 +647,13 @@ private fun FrameWindowScope.DesktopApp(
                     onRegisterFolderActions = { add, remove ->
                         addFolderAction = add
                         removeFolderAction = remove
+                    },
+                    onPreviewShortcutKeyEvent = { event ->
+                        shortcutKeyHandler.handlePreviewKeyEvent(
+                            event = event,
+                            isTextInputActive = false,
+                            onAction = ::executeShortcutAction
+                        )
                     }
                 )
             }
@@ -658,6 +671,7 @@ private fun FrameWindowScope.DesktopApp(
             }
             if(showIntro) StartupIntro {showIntro=false;IntroState.active.value=false}
             }
+        }
         }
     }
 }

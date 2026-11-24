@@ -193,4 +193,50 @@ class KeybindingManagerTest {
         val matchedInText = manager.matchAction(composeEvent, isTextInputActive = true)
         assertNull(matchedInText)
     }
+
+    @Test
+    fun testShortcutKeyHandlerConsumesSpacebarDownAndUpBeforeFocusedControls() {
+        val manager = KeybindingManager(
+            configFile = tempFolder.newFile("preview-handler-keys.json").toPath(),
+            isMac = true
+        )
+        val handler = ShortcutKeyHandler(manager)
+        val dummyComponent: Component = JPanel()
+        val triggered = mutableListOf<ShortcutAction>()
+
+        val spaceDown = toComposeKeyEvent(
+            AwtKeyEvent(
+                dummyComponent,
+                AwtKeyEvent.KEY_PRESSED,
+                System.currentTimeMillis(),
+                0,
+                AwtKeyEvent.VK_SPACE,
+                ' '
+            )
+        )
+        val spaceUp = toComposeKeyEvent(
+            AwtKeyEvent(
+                dummyComponent,
+                AwtKeyEvent.KEY_RELEASED,
+                System.currentTimeMillis(),
+                0,
+                AwtKeyEvent.VK_SPACE,
+                ' '
+            )
+        )
+
+        // When not typing in text input, both KeyDown and KeyUp are consumed so focused buttons don't activate
+        assertTrue(handler.handlePreviewKeyEvent(spaceDown, isTextInputActive = false) { triggered.add(it) })
+        assertEquals(listOf(ShortcutAction.PLAY_PAUSE), triggered)
+        assertTrue(handler.handlePreviewKeyEvent(spaceUp, isTextInputActive = false) { triggered.add(it) })
+        assertEquals(listOf(ShortcutAction.PLAY_PAUSE), triggered)
+
+        // Subsequent KeyUp without a matching KeyDown is not consumed
+        assertFalse(handler.handlePreviewKeyEvent(spaceUp, isTextInputActive = false) { triggered.add(it) })
+
+        // When text input is active, Spacebar passes through to the text field
+        assertFalse(handler.handlePreviewKeyEvent(spaceDown, isTextInputActive = true) { triggered.add(it) })
+        assertFalse(handler.handlePreviewKeyEvent(spaceUp, isTextInputActive = true) { triggered.add(it) })
+        assertEquals(1, triggered.size)
+    }
 }

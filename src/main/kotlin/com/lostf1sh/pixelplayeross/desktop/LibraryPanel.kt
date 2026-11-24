@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.lostf1sh.pixelplayeross.desktop.library.*
 import com.lostf1sh.pixelplayeross.desktop.playback.AudioController
 import com.lostf1sh.pixelplayeross.desktop.playback.PlatformMediaSession
+import com.lostf1sh.pixelplayeross.desktop.system.trackTextInputFocus
 import com.lostf1sh.pixelplayeross.desktop.theme.ThemeManager
 import com.lostf1sh.pixelplayeross.desktop.ui.DuplicatesDialog
 import com.lostf1sh.pixelplayeross.desktop.ui.EqualizerDialog
@@ -85,7 +86,8 @@ fun LibraryPanel(
     duplicatesOpen: Boolean = false,
     onDuplicatesOpenChange: (Boolean) -> Unit = {},
     onLibraryStatsChanged: (folders: List<String>, totalTracks: Int) -> Unit = { _, _ -> },
-    onRegisterFolderActions: (addFolder: () -> Unit, removeFolder: (String) -> Unit) -> Unit = { _, _ -> }
+    onRegisterFolderActions: (addFolder: () -> Unit, removeFolder: (String) -> Unit) -> Unit = { _, _ -> },
+    onPreviewShortcutKeyEvent: ((KeyEvent) -> Boolean)? = null
 ) {
     val appColors=MaterialTheme.colorScheme
     val queuePalette=remember(appColors){queueColorScheme(appColors)}
@@ -470,7 +472,7 @@ fun LibraryPanel(
                         OutlinedTextField(
                             value = query,
                             onValueChange = { query = it },
-                            modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
+                            modifier = Modifier.fillMaxWidth().trackTextInputFocus().onPreviewKeyEvent { event ->
                                 if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
                                     query = ""
                                     searchOpen = false
@@ -707,7 +709,9 @@ fun LibraryPanel(
             onPreviewKeyEvent={event ->
                 if(event.type==KeyEventType.KeyDown && event.key==Key.Escape) {
                     queueOpen=false;adding=null;naming=null;queueToSave=null;onFullPlayer(false);true
-                } else false
+                } else {
+                    onPreviewShortcutKeyEvent?.invoke(event) ?: false
+                }
             }) {
             // Compose the heavy content while it is still invisible and start the fade only after a few frames;
             // otherwise a slow first frame swallows the animation and the player just pops in.

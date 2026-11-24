@@ -208,3 +208,35 @@ class KeybindingManager(
         }
     }
 }
+
+/**
+ * Dispatches configured keyboard shortcuts during the preview (top-down) key phase
+ * and consumes matching KeyUp events so focused controls do not activate on Spacebar.
+ */
+class ShortcutKeyHandler(
+    private val keybindingManager: KeybindingManager
+) {
+    private val consumedKeyDownCodes = mutableSetOf<Int>()
+
+    fun handlePreviewKeyEvent(
+        event: KeyEvent,
+        isTextInputActive: Boolean = false,
+        onAction: (ShortcutAction) -> Unit
+    ): Boolean {
+        val keyCode = KeyCombination.extractAwtKeyCode(event)
+        return when (event.type) {
+            KeyEventType.KeyDown -> {
+                val action = keybindingManager.matchAction(event, isTextInputActive = isTextInputActive)
+                if (action != null) {
+                    consumedKeyDownCodes.add(keyCode)
+                    onAction(action)
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyEventType.KeyUp -> consumedKeyDownCodes.remove(keyCode)
+            else -> false
+        }
+    }
+}
