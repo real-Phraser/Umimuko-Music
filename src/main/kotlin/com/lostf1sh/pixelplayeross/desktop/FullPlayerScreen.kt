@@ -212,6 +212,8 @@ fun FullPlayerScreen(
                                 LyricsPaneContent(
                                     lyrics = lyrics,
                                     currentTimeMs = state.time,
+                                    isPlaying = state.playing,
+                                    playbackRate = state.rate,
                                     isLoading = isLoadingLyrics,
                                     fadeColor = ambientColors.deepBackground,
                                     onBackgroundColor = colors.onBackground,
@@ -236,6 +238,8 @@ fun FullPlayerScreen(
                             LyricsPaneContent(
                                 lyrics = lyrics,
                                 currentTimeMs = state.time,
+                                isPlaying = state.playing,
+                                playbackRate = state.rate,
                                 isLoading = isLoadingLyrics,
                                 fadeColor = ambientColors.deepBackground,
                                 onBackgroundColor = colors.onBackground,
@@ -666,6 +670,8 @@ private fun PlayerScrubberAndControls(
 private fun LyricsPaneContent(
     lyrics: SpicyLyrics,
     currentTimeMs: Long,
+    isPlaying: Boolean,
+    playbackRate: Float,
     isLoading: Boolean,
     fadeColor: Color,
     onBackgroundColor: Color,
@@ -689,6 +695,8 @@ private fun LyricsPaneContent(
         SpicyLyricsView(
             lyrics = lyrics,
             currentTimeMs = currentTimeMs,
+            isPlaying = isPlaying,
+            playbackRate = playbackRate,
             fadeColor = fadeColor,
             onBackgroundColor = onBackgroundColor,
             accentColor = accentColor,

@@ -47,15 +47,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
@@ -77,11 +82,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.animateDpAsState
 import com.lostf1sh.pixelplayeross.desktop.Glyph
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlin.math.abs
 
 private const val INTRO_DOTS_THRESHOLD_MS = 1500L
 private const val INTERLUDE_GAP_THRESHOLD_MS = 5000L
 private const val MANUAL_SCROLL_RESUME_MS = 4000L
+private const val CLOCK_SNAP_DRIFT_MS = 350.0
+private const val CLOCK_MAX_AHEAD_MS = 600.0
 
 /**
  * Spicy Lyrics inspired karaoke view supporting syllable-by-syllable sweep,
@@ -96,6 +104,8 @@ fun SpicyLyricsView(
     accentColor: Color,
     onSeek: (Long) -> Unit,
     onOpenSettings: (() -> Unit)? = null,
+    isPlaying: Boolean = true,
+    playbackRate: Float = 1.0f,
     modifier: Modifier = Modifier
 ) {
     if (lyrics.lines.isEmpty()) {
@@ -110,14 +120,81 @@ fun SpicyLyricsView(
     }
 
     val isStatic = lyrics.type == SpicyLyricsType.STATIC
-    val activeIndex = remember(lyrics, currentTimeMs, isStatic) {
-        if (isStatic) -1 else lyrics.findActiveLineIndex(currentTimeMs)
+    val latestPositionMs by rememberUpdatedState(currentTimeMs)
+    val latestRate by rememberUpdatedState(playbackRate.coerceIn(0.25f, 4.0f))
+    val interpolatedTimeMsState = remember(lyrics) { mutableLongStateOf(currentTimeMs) }
+
+    // Snap immediately when paused (e.g. user seeks while paused)
+    LaunchedEffect(currentTimeMs, isPlaying, lyrics) {
+        if (!isPlaying || isStatic) {
+            interpolatedTimeMsState.longValue = currentTimeMs
+        }
+    }
+
+    // 60fps/120fps smooth playback clock interpolation between coarse ~100ms audio position ticks
+    LaunchedEffect(isPlaying, isStatic, lyrics) {
+        if (!isPlaying || isStatic) return@LaunchedEffect
+        var lastFrameNanos = 0L
+        var lastSeenAudioMs = latestPositionMs
+        var smoothTime = lastSeenAudioMs.toDouble()
+        var pendingCorrectionMs = 0.0
+
+        while (isActive) {
+            withFrameNanos { frameNanos ->
+                val dtMs = if (lastFrameNanos == 0L) {
+                    0.0
+                } else {
+                    ((frameNanos - lastFrameNanos) / 1_000_000.0).coerceIn(0.0, 100.0) * latestRate
+                }
+                lastFrameNanos = frameNanos
+
+                val audioMs = latestPositionMs
+                if (audioMs != lastSeenAudioMs) {
+                    val drift = audioMs.toDouble() - smoothTime
+                    lastSeenAudioMs = audioMs
+                    if (abs(drift) > CLOCK_SNAP_DRIFT_MS) {
+                        smoothTime = audioMs.toDouble()
+                        pendingCorrectionMs = 0.0
+                    } else {
+                        pendingCorrectionMs = drift
+                    }
+                }
+
+                smoothTime += dtMs
+
+                if (abs(pendingCorrectionMs) > 0.5) {
+                    val step = pendingCorrectionMs * 0.25
+                    smoothTime += step
+                    pendingCorrectionMs -= step
+                }
+
+                // Prevent runaway if audio playback stalls/buffers without updating position
+                if (abs(smoothTime - audioMs) > CLOCK_MAX_AHEAD_MS) {
+                    smoothTime = audioMs.toDouble()
+                    pendingCorrectionMs = 0.0
+                }
+
+                interpolatedTimeMsState.longValue = smoothTime.toLong().coerceAtLeast(0L)
+            }
+        }
+    }
+
+    val timeProvider = remember(interpolatedTimeMsState) { { interpolatedTimeMsState.longValue } }
+
+    val activeIndex by remember(lyrics, isStatic) {
+        derivedStateOf {
+            if (isStatic) -1 else lyrics.findActiveLineIndex(interpolatedTimeMsState.longValue)
+        }
     }
 
     val firstLine = lyrics.lines.firstOrNull()
-    val showIntroDots = !isStatic &&
-        firstLine != null &&
-        currentTimeMs < (firstLine.startTimeMs - INTRO_DOTS_THRESHOLD_MS)
+    val showIntroDots by remember(lyrics, isStatic, firstLine) {
+        derivedStateOf {
+            !isStatic &&
+                firstLine != null &&
+                interpolatedTimeMsState.longValue < (firstLine.startTimeMs - INTRO_DOTS_THRESHOLD_MS)
+        }
+    }
 
     val listState = rememberLazyListState()
     val isDragged by listState.interactionSource.collectIsDraggedAsState()
@@ -134,8 +211,9 @@ fun SpicyLyricsView(
     }
 
     // Auto-resume sync after user stops scrolling
-    LaunchedEffect(currentTimeMs, userScrolled) {
-        if (userScrolled && System.currentTimeMillis() - lastUserScrollEpoch > MANUAL_SCROLL_RESUME_MS) {
+    LaunchedEffect(userScrolled, lastUserScrollEpoch) {
+        if (userScrolled) {
+            delay(MANUAL_SCROLL_RESUME_MS)
             userScrolled = false
         }
     }
@@ -165,11 +243,15 @@ fun SpicyLyricsView(
     val introGapStart = remember(lyrics, firstLine) {
         if (firstLine == null) 0L else lyrics.startTimeMs.coerceAtMost(firstLine.startTimeMs)
     }
-    val introProgress = if (firstLine != null) {
-        ((currentTimeMs - introGapStart).toFloat() /
-            (firstLine.startTimeMs - introGapStart).coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
+    val introProgressProvider = remember(firstLine, introGapStart, timeProvider) {
+        {
+            if (firstLine != null) {
+                ((timeProvider() - introGapStart).toFloat() /
+                    (firstLine.startTimeMs - introGapStart).coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -201,7 +283,7 @@ fun SpicyLyricsView(
                     exit = fadeOut(tween(250))
                 ) {
                     InterludeDotsRow(
-                        progress = introProgress,
+                        progressProvider = introProgressProvider,
                         accentColor = accentColor,
                         onBackgroundColor = onBackgroundColor,
                         oppositeAligned = firstLine?.oppositeAligned == true,
@@ -218,14 +300,25 @@ fun SpicyLyricsView(
                 val hasLongGapAfter = !isStatic &&
                     nextLine != null &&
                     (nextLine.startTimeMs - line.endTimeMs) > INTERLUDE_GAP_THRESHOLD_MS
-                val showGapDots = hasLongGapAfter &&
-                    currentTimeMs >= line.endTimeMs &&
-                    currentTimeMs < nextLine!!.startTimeMs
-                val gapProgress = if (hasLongGapAfter) {
-                    ((currentTimeMs - line.endTimeMs).toFloat() /
-                        (nextLine!!.startTimeMs - line.endTimeMs).coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
-                } else {
-                    0f
+                val showGapDots by remember(hasLongGapAfter, line, nextLine) {
+                    derivedStateOf {
+                        if (!hasLongGapAfter) {
+                            false
+                        } else {
+                            val now = timeProvider()
+                            now >= line.endTimeMs && now < nextLine!!.startTimeMs
+                        }
+                    }
+                }
+                val gapProgressProvider = remember(hasLongGapAfter, line, nextLine, timeProvider) {
+                    {
+                        if (hasLongGapAfter) {
+                            ((timeProvider() - line.endTimeMs).toFloat() /
+                                (nextLine!!.startTimeMs - line.endTimeMs).coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+                        } else {
+                            0f
+                        }
+                    }
                 }
 
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -234,7 +327,7 @@ fun SpicyLyricsView(
                         index = index,
                         activeIndex = activeIndex,
                         lyricsType = lyrics.type,
-                        currentTimeMs = currentTimeMs,
+                        timeProvider = timeProvider,
                         showRomanized = showRomanized,
                         isUserScrolling = userScrolled,
                         onBackgroundColor = onBackgroundColor,
@@ -252,7 +345,7 @@ fun SpicyLyricsView(
                             exit = fadeOut(tween(250))
                         ) {
                             InterludeDotsRow(
-                                progress = gapProgress,
+                                progressProvider = gapProgressProvider,
                                 accentColor = accentColor,
                                 onBackgroundColor = onBackgroundColor,
                                 oppositeAligned = nextLine?.oppositeAligned == true,
@@ -319,7 +412,7 @@ private fun SpicyLyricLineItem(
     index: Int,
     activeIndex: Int,
     lyricsType: SpicyLyricsType,
-    currentTimeMs: Long,
+    timeProvider: () -> Long,
     showRomanized: Boolean,
     isUserScrolling: Boolean,
     onBackgroundColor: Color,
@@ -420,7 +513,7 @@ private fun SpicyLyricLineItem(
                 syllables = line.syllables,
                 isLineActive = isActive,
                 isLinePast = !isStatic && activeIndex >= 0 && index < activeIndex,
-                currentTimeMs = currentTimeMs,
+                timeProvider = timeProvider,
                 oppositeAligned = line.oppositeAligned,
                 onBackgroundColor = onBackgroundColor,
                 accentColor = accentColor,
@@ -488,12 +581,17 @@ private fun SpicyLyricLineItem(
             ) {
                 line.backgroundVocals.forEach { bgLine ->
                     if (lyricsType == SpicyLyricsType.SYLLABLE && bgLine.syllables.isNotEmpty()) {
-                        val bgActive = currentTimeMs in bgLine.startTimeMs..bgLine.endTimeMs
+                        val bgActive by remember(bgLine, timeProvider) {
+                            derivedStateOf { timeProvider() in bgLine.startTimeMs..bgLine.endTimeMs }
+                        }
+                        val bgPast by remember(bgLine, timeProvider) {
+                            derivedStateOf { timeProvider() > bgLine.endTimeMs }
+                        }
                         SyllableSweepLine(
                             syllables = bgLine.syllables,
                             isLineActive = bgActive || isActive,
-                            isLinePast = currentTimeMs > bgLine.endTimeMs,
-                            currentTimeMs = currentTimeMs,
+                            isLinePast = bgPast,
+                            timeProvider = timeProvider,
                             oppositeAligned = line.oppositeAligned,
                             onBackgroundColor = onBackgroundColor.copy(alpha = 0.72f),
                             accentColor = accentColor,
@@ -539,7 +637,7 @@ private fun SyllableSweepLine(
     syllables: List<SpicySyllable>,
     isLineActive: Boolean,
     isLinePast: Boolean,
-    currentTimeMs: Long,
+    timeProvider: () -> Long,
     oppositeAligned: Boolean,
     onBackgroundColor: Color,
     accentColor: Color,
@@ -569,6 +667,17 @@ private fun SyllableSweepLine(
     val litColor = onBackgroundColor
     val unlitColor = onBackgroundColor.copy(alpha = if (isLineActive) 0.34f else 0.72f)
 
+    // Static TextStyle with no per-frame Brush or Shadow so Skia builds TextParagraph and caches glyphs once.
+    val staticTextStyle = remember(fontSize, lineHeight, baseWeight) {
+        TextStyle(
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            letterSpacing = (-0.3).sp,
+            fontWeight = baseWeight,
+            color = Color.White
+        )
+    }
+
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(
@@ -580,84 +689,79 @@ private fun SyllableSweepLine(
         words.forEach { wordSyllables ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 wordSyllables.forEach { syl ->
-                    val progress = when {
-                        isLinePast -> 1f
-                        !isLineActive -> 0f
-                        currentTimeMs <= syl.startTimeMs -> 0f
-                        currentTimeMs >= syl.endTimeMs -> 1f
-                        syl.endTimeMs <= syl.startTimeMs -> 1f
-                        else -> ((currentTimeMs - syl.startTimeMs).toFloat() /
-                            (syl.endTimeMs - syl.startTimeMs).toFloat()).coerceIn(0f, 1f)
-                    }
-
-                    val isSyllableSinging = isLineActive && progress > 0f && progress < 1f
-                    val animatedLift by animateFloatAsState(
-                        targetValue = if (isSyllableSinging) liftPx else 0f,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    )
-                    val animatedScale by animateFloatAsState(
-                        targetValue = if (isSyllableSinging) 1.04f else 1.0f,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    )
-
-                    val glowShadow = if (isSyllableSinging) {
-                        Shadow(
-                            color = accentColor.copy(alpha = 0.65f),
-                            offset = Offset.Zero,
-                            blurRadius = 18f
-                        )
-                    } else if (isLineActive && progress >= 1f) {
-                        Shadow(
-                            color = accentColor.copy(alpha = 0.24f),
-                            offset = Offset.Zero,
-                            blurRadius = 8f
-                        )
-                    } else {
-                        null
-                    }
-
-                    val textStyle = if (progress > 0.001f && progress < 0.999f) {
-                        val feather = 0.20f
-                        val startFade = (progress * (1f + feather) - feather).coerceIn(0f, 1f)
-                        val endFade = (progress * (1f + feather)).coerceIn(0f, 1f)
-                        TextStyle(
-                            fontSize = fontSize,
-                            lineHeight = lineHeight,
-                            letterSpacing = (-0.3).sp,
-                            fontWeight = baseWeight,
-                            brush = Brush.horizontalGradient(
-                                0f to litColor,
-                                startFade to litColor,
-                                endFade to unlitColor,
-                                1f to unlitColor
-                            ),
-                            shadow = glowShadow
-                        )
-                    } else {
-                        TextStyle(
-                            fontSize = fontSize,
-                            lineHeight = lineHeight,
-                            letterSpacing = (-0.3).sp,
-                            fontWeight = baseWeight,
-                            color = if (progress >= 0.999f) litColor else unlitColor,
-                            shadow = glowShadow
-                        )
-                    }
-
                     Text(
                         text = syl.text,
-                        style = textStyle,
-                        modifier = Modifier.graphicsLayer {
-                            translationY = animatedLift
-                            scaleX = animatedScale
-                            scaleY = animatedScale
-                        }
+                        style = staticTextStyle,
+                        modifier = Modifier
+                            .graphicsLayer {
+                                if (isLineActive && !isLinePast) {
+                                    val env = syllableSingingEnvelope(syl, timeProvider())
+                                    translationY = liftPx * env
+                                    val s = 1f + 0.04f * env
+                                    scaleX = s
+                                    scaleY = s
+                                }
+                            }
+                            .drawBehind {
+                                if (isLineActive && !isLinePast) {
+                                    val nowMs = timeProvider()
+                                    val progress = syllableProgress(syl, nowMs)
+                                    val env = syllableSingingEnvelope(syl, nowMs)
+                                    val glowAlpha = (0.16f * progress + 0.32f * env).coerceIn(0f, 0.50f)
+                                    if (glowAlpha > 0.01f) {
+                                        val radius = maxOf(size.width, size.height) * 0.95f
+                                        if (radius > 0f) {
+                                            drawCircle(
+                                                brush = Brush.radialGradient(
+                                                    colors = listOf(
+                                                        accentColor.copy(alpha = glowAlpha),
+                                                        Color.Transparent
+                                                    ),
+                                                    center = center,
+                                                    radius = radius
+                                                ),
+                                                radius = radius,
+                                                center = center
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            .graphicsLayer {
+                                compositingStrategy = CompositingStrategy.Offscreen
+                            }
+                            .drawWithContent {
+                                drawContent()
+                                val progress = when {
+                                    isLinePast -> 1f
+                                    !isLineActive -> 0f
+                                    else -> syllableProgress(syl, timeProvider())
+                                }
+                                when {
+                                    progress <= 0.001f -> {
+                                        drawRect(color = unlitColor, blendMode = BlendMode.SrcIn)
+                                    }
+                                    progress >= 0.999f -> {
+                                        drawRect(color = litColor, blendMode = BlendMode.SrcIn)
+                                    }
+                                    else -> {
+                                        val feather = 0.20f
+                                        val startFade = (progress * (1f + feather) - feather).coerceIn(0f, 1f)
+                                        val endFade = (progress * (1f + feather)).coerceIn(0f, 1f)
+                                        drawRect(
+                                            brush = Brush.horizontalGradient(
+                                                0f to litColor,
+                                                startFade to litColor,
+                                                endFade to unlitColor,
+                                                1f to unlitColor,
+                                                startX = 0f,
+                                                endX = size.width.coerceAtLeast(1f)
+                                            ),
+                                            blendMode = BlendMode.SrcIn
+                                        )
+                                    }
+                                }
+                            }
                     )
                 }
             }
@@ -665,9 +769,29 @@ private fun SyllableSweepLine(
     }
 }
 
+private fun syllableProgress(syl: SpicySyllable, nowMs: Long): Float = when {
+    nowMs <= syl.startTimeMs -> 0f
+    nowMs >= syl.endTimeMs -> 1f
+    syl.endTimeMs <= syl.startTimeMs -> 1f
+    else -> ((nowMs - syl.startTimeMs).toFloat() /
+        (syl.endTimeMs - syl.startTimeMs).toFloat()).coerceIn(0f, 1f)
+}
+
+private fun syllableSingingEnvelope(syl: SpicySyllable, nowMs: Long): Float {
+    if (nowMs <= syl.startTimeMs) return 0f
+    val attack = ((nowMs - syl.startTimeMs) / 75f).coerceIn(0f, 1f)
+    val release = if (nowMs <= syl.endTimeMs) {
+        1f
+    } else {
+        (1f - (nowMs - syl.endTimeMs) / 140f).coerceIn(0f, 1f)
+    }
+    val t = minOf(attack, release)
+    return t * t * (3f - 2f * t)
+}
+
 @Composable
 private fun InterludeDotsRow(
-    progress: Float,
+    progressProvider: () -> Float,
     accentColor: Color,
     onBackgroundColor: Color,
     oppositeAligned: Boolean,
@@ -683,6 +807,9 @@ private fun InterludeDotsRow(
         )
     )
 
+    val dotBaseColor = onBackgroundColor.copy(alpha = 0.28f)
+    val dotLitColor = lerp(onBackgroundColor, accentColor, 0.35f)
+
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(
@@ -693,28 +820,29 @@ private fun InterludeDotsRow(
     ) {
         repeat(3) { dotIndex ->
             val dotStart = dotIndex / 3f
-            val dotFill = ((progress - dotStart) * 3f).coerceIn(0f, 1f)
-            val isCurrentlyFilling = dotFill > 0f && dotFill < 1f
-            val pulseBoost = if (isCurrentlyFilling) breathe * 0.14f else if (progress > 0.92f) breathe * 0.10f else 0f
-            val effectiveFill = (dotFill + pulseBoost).coerceIn(0f, 1f)
-
-            val dotColor = lerp(
-                onBackgroundColor.copy(alpha = 0.28f),
-                lerp(onBackgroundColor, accentColor, 0.35f),
-                effectiveFill
-            )
-            val scale = 0.85f + (0.30f * effectiveFill)
-
             Box(
                 modifier = Modifier
                     .size(11.dp)
                     .graphicsLayer {
+                        val progress = progressProvider()
+                        val dotFill = ((progress - dotStart) * 3f).coerceIn(0f, 1f)
+                        val isCurrentlyFilling = dotFill > 0f && dotFill < 1f
+                        val pulseBoost = if (isCurrentlyFilling) breathe * 0.14f else if (progress > 0.92f) breathe * 0.10f else 0f
+                        val effectiveFill = (dotFill + pulseBoost).coerceIn(0f, 1f)
+                        val scale = 0.85f + (0.30f * effectiveFill)
                         scaleX = scale
                         scaleY = scale
                         alpha = 0.32f + (0.68f * effectiveFill)
                     }
                     .clip(CircleShape)
-                    .background(dotColor)
+                    .drawBehind {
+                        val progress = progressProvider()
+                        val dotFill = ((progress - dotStart) * 3f).coerceIn(0f, 1f)
+                        val isCurrentlyFilling = dotFill > 0f && dotFill < 1f
+                        val pulseBoost = if (isCurrentlyFilling) breathe * 0.14f else if (progress > 0.92f) breathe * 0.10f else 0f
+                        val effectiveFill = (dotFill + pulseBoost).coerceIn(0f, 1f)
+                        drawRect(lerp(dotBaseColor, dotLitColor, effectiveFill))
+                    }
             )
         }
     }
