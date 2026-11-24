@@ -147,6 +147,35 @@ class BrandingTest {
     }
 
     @Test
+    fun testStartupIntroAnimationDecodesCleanly() {
+        val stream = javaClass.classLoader.getResourceAsStream("branding/startup-intro.webp")
+        assertNotNull(stream, "branding/startup-intro.webp must be present on the classpath")
+        val bytes = stream.use { it.readAllBytes() }
+        assertTrue(bytes.isNotEmpty(), "startup-intro.webp must not be empty")
+
+        org.jetbrains.skia.Data.makeFromBytes(bytes).use { data ->
+            org.jetbrains.skia.Codec.makeFromData(data).use { codec ->
+                assertEquals(1920, codec.imageInfo.width)
+                assertEquals(1080, codec.imageInfo.height)
+                assertTrue(codec.frameCount > 1, "startup-intro.webp must have multiple animation frames")
+                val framesInfo = codec.framesInfo
+                assertEquals(codec.frameCount, framesInfo.size)
+
+                org.jetbrains.skia.Bitmap().use { bitmap ->
+                    bitmap.allocPixels(codec.imageInfo)
+                    codec.readPixels(bitmap, 0)
+                    var lastDecoded = 0
+                    for (i in 1 until codec.frameCount) {
+                        val prior = if (framesInfo[i].requiredFrame >= 0) lastDecoded else -1
+                        codec.readPixels(bitmap, i, prior)
+                        lastDecoded = i
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun testAllRegisteredMaterialSymbolsExistOnClasspath() {
         val names = listOf(
             "play", "pause", "next", "previous", "search", "music", "levels",

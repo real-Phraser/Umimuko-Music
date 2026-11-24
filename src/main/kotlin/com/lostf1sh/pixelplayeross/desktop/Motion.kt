@@ -2,29 +2,32 @@ package com.lostf1sh.pixelplayeross.desktop
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Codec
+import org.jetbrains.skia.Data
+import org.jetbrains.skia.Image as SkiaImage
 import java.util.prefs.Preferences
 import com.lostf1sh.pixelplayeross.desktop.library.PlatformPaths
 
@@ -125,52 +128,110 @@ fun Modifier.entrance(key: Any, delayMs: Long, animate: Boolean = true, duration
     }
 }
 
+private const val STARTUP_INTRO_RESOURCE = "branding/startup-intro.webp"
+private const val DEFAULT_FRAME_DURATION_MS = 17
+
+private fun loadStartupIntroBytes(): ByteArray? {
+    val stream = Thread.currentThread().contextClassLoader?.getResourceAsStream(STARTUP_INTRO_RESOURCE)
+        ?: IntroState::class.java.classLoader?.getResourceAsStream(STARTUP_INTRO_RESOURCE)
+    return stream?.use { it.readBytes() }
+}
+
 /**
- * Startup animation, about one second: a soft glow opens, the app mark settles with a small bounce,
- * the name fades in, then the cover dissolves into the window. Only draw-layer properties animate.
+ * Startup animation played from `branding/startup-intro.webp` via Skia's animated WebP [Codec],
+ * followed by a smooth fade-out into the main window.
  */
 @Composable
 fun StartupIntro(onFinished: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val glow = remember { Animatable(0f) }
-    val mark = remember { Animatable(0f) }
-    val markScale = remember { Animatable(.72f) }
-    val title = remember { Animatable(0f) }
     val cover = remember { Animatable(1f) }
+    var currentFrame by remember { mutableStateOf<ImageBitmap?>(null) }
+
     LaunchedEffect(Unit) {
-        coroutineScope {
-            launch { glow.animateTo(1f, tween(700, easing = EmphasizedDecelerate)) }
-            launch { mark.animateTo(1f, tween(240)) }
-            launch { markScale.animateTo(1f, spring(dampingRatio = .55f, stiffness = Spring.StiffnessMediumLow)) }
-            launch { delay(220); title.animateTo(1f, tween(420, easing = EmphasizedDecelerate)) }
+        try {
+            val bytes = withContext(Dispatchers.IO) { loadStartupIntroBytes() }
+            if (bytes != null && bytes.isNotEmpty()) {
+                Data.makeFromBytes(bytes).use { data ->
+                    Codec.makeFromData(data).use { codec ->
+                        val frameCount = codec.frameCount.coerceAtLeast(1)
+                        val framesInfo = codec.framesInfo
+                        val endTimesMs = LongArray(frameCount)
+                        var totalMs = 0L
+                        for (i in 0 until frameCount) {
+                            val d = framesInfo.getOrNull(i)?.duration ?: DEFAULT_FRAME_DURATION_MS
+                            totalMs += if (d > 0) d.toLong() else DEFAULT_FRAME_DURATION_MS.toLong()
+                            endTimesMs[i] = totalMs
+                        }
+
+                        Bitmap().use { workingBitmap ->
+                            workingBitmap.allocPixels(codec.imageInfo)
+                            var decodedIdx = 0
+                            var lastDecoded = -1
+
+                            suspend fun decodeTo(targetIdx: Int): ImageBitmap = withContext(Dispatchers.Default) {
+                                while (decodedIdx < targetIdx) {
+                                    decodedIdx++
+                                    val req = framesInfo.getOrNull(decodedIdx)?.requiredFrame ?: -1
+                                    val prior = if (req >= 0 && lastDecoded >= 0) lastDecoded else -1
+                                    codec.readPixels(workingBitmap, decodedIdx, prior)
+                                    lastDecoded = decodedIdx
+                                }
+                                SkiaImage.makeFromBitmap(workingBitmap).use { it.toComposeImageBitmap() }
+                            }
+
+                            currentFrame = withContext(Dispatchers.Default) {
+                                codec.readPixels(workingBitmap, 0)
+                                lastDecoded = 0
+                                SkiaImage.makeFromBitmap(workingBitmap).use { it.toComposeImageBitmap() }
+                            }
+
+                            if (frameCount > 1) {
+                                var startNanos = -1L
+                                var targetIdx = 0
+                                while (true) {
+                                    val frameTimeNanos = withFrameNanos { it }
+                                    if (startNanos < 0L) startNanos = frameTimeNanos
+                                    val elapsedMs = (frameTimeNanos - startNanos) / 1_000_000L
+                                    if (elapsedMs >= totalMs) {
+                                        if (decodedIdx < frameCount - 1) {
+                                            currentFrame = decodeTo(frameCount - 1)
+                                        }
+                                        break
+                                    }
+                                    while (targetIdx < frameCount - 1 && elapsedMs >= endTimesMs[targetIdx]) {
+                                        targetIdx++
+                                    }
+                                    if (targetIdx > decodedIdx) {
+                                        currentFrame = decodeTo(targetIdx)
+                                    }
+                                }
+                            } else {
+                                delay(totalMs)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // Fall through to fade-out and onFinished so startup is never blocked.
         }
-        delay(120)
         cover.animateTo(0f, tween(260))
         onFinished()
     }
+
     Box(
-        Modifier.fillMaxSize().graphicsLayer { alpha = cover.value }.background(colors.background)
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer { alpha = cover.value }
+            .background(Color.Black)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier.size(280.dp).graphicsLayer {
-                        val s = .6f + .4f * glow.value
-                        scaleX = s; scaleY = s; alpha = glow.value
-                    }.background(Brush.radialGradient(listOf(colors.primary.copy(alpha = .28f), Color.Transparent)))
-                )
-                Box(Modifier.graphicsLayer {
-                    alpha = mark.value; scaleX = markScale.value; scaleY = markScale.value
-                }) { AppIcon(104.dp, colors.onBackground) }
-            }
-            Spacer(Modifier.height(20.dp))
-            Text(
-                "Umimuko Music", style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.graphicsLayer {
-                    alpha = title.value; translationY = (1f - title.value) * 10.dp.toPx()
-                }
+        currentFrame?.let { frame ->
+            Image(
+                bitmap = frame,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
