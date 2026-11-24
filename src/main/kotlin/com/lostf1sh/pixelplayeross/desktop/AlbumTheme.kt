@@ -27,7 +27,7 @@ fun albumColorScheme(dark: Boolean, accentArgb: Int?): ColorScheme {
         secondary = primary, onSecondary = contrastingText(primary),
         background = background, onBackground = contrastingText(background),
         surface = surface, onSurface = contrastingText(surface),
-        surfaceVariant = variant, onSurfaceVariant = contrastingText(variant).copy(alpha = .82f),
+        surfaceVariant = variant, onSurfaceVariant = lerp(contrastingText(variant), variant, if (dark) .18f else .15f),
         secondaryContainer = container, onSecondaryContainer = contrastingText(container),
         outline = outline, outlineVariant = outlineVariant,
     )
@@ -47,3 +47,18 @@ fun contrastingText(background: Color): Color {
     val luminance = background.luminance()
     return if ((luminance + .05f) / .05f > 1.05f / (luminance + .05f)) Color.Black else Color.White
 }
+
+/** WCAG 2.x relative luminance contrast ratio between two opaque colors. */
+fun contrastRatio(a: Color, b: Color): Float {
+    val l1 = a.luminance()
+    val l2 = b.luminance()
+    return (maxOf(l1, l2) + .05f) / (minOf(l1, l2) + .05f)
+}
+
+/** Returns [foreground] when it meets [minRatio] against [background], otherwise [fallback]. */
+fun ensureContrast(
+    foreground: Color,
+    background: Color,
+    minRatio: Float = 4.5f,
+    fallback: Color = contrastingText(background)
+): Color = if (contrastRatio(foreground, background) >= minRatio) foreground else fallback

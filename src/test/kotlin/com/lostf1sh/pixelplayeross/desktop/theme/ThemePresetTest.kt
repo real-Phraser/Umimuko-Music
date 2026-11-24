@@ -1,6 +1,7 @@
 package com.lostf1sh.pixelplayeross.desktop.theme
 
 import androidx.compose.ui.graphics.Color
+import com.lostf1sh.pixelplayeross.desktop.contrastRatio
 import kotlin.test.*
 
 class ThemePresetTest {
@@ -56,6 +57,26 @@ class ThemePresetTest {
             assertEquals(scheme.surface, ambient.glowBase, "${preset.id} should use theme surface for glowBase")
             assertEquals(scheme.background, ambient.deepBackground, "${preset.id} should use theme background for deepBackground")
             assertNotEquals(Color(coverAccent), ambient.glowAccent, "${preset.id} must ignore album cover accent")
+        }
+    }
+
+    @Test
+    fun allPresetsMeetContrastRequirementsInLightAndDarkModes() {
+        val coverAccents = listOf<Int?>(null, 0xFF4DA3FF.toInt(), 0xFFFF0000.toInt(), 0xFFFFFF00.toInt())
+        for (preset in ThemePreset.entries) {
+            for (isDark in listOf(true, false)) {
+                for (accent in coverAccents) {
+                    val scheme = preset.colorScheme(isDark = isDark, coverAccent = accent)
+                    val label = "${preset.id} (dark=$isDark, accent=$accent)"
+                    assertTrue(contrastRatio(scheme.onBackground, scheme.background) >= 4.5f, "$label onBackground/background")
+                    assertTrue(contrastRatio(scheme.onSurface, scheme.surface) >= 4.5f, "$label onSurface/surface")
+                    assertTrue(contrastRatio(scheme.onSurfaceVariant, scheme.surfaceVariant) >= 4.5f, "$label onSurfaceVariant/surfaceVariant")
+                    assertTrue(contrastRatio(scheme.onSurface, scheme.surfaceVariant) >= 4.5f, "$label onSurface/surfaceVariant")
+                    assertTrue(contrastRatio(scheme.onPrimary, scheme.primary) >= 4.5f, "$label onPrimary/primary")
+                    assertTrue(contrastRatio(scheme.onPrimaryContainer, scheme.primaryContainer) >= 4.5f, "$label onPrimaryContainer/primaryContainer")
+                    assertTrue(contrastRatio(scheme.primary, scheme.surfaceVariant) >= 3.0f, "$label primary/surfaceVariant")
+                }
+            }
         }
     }
 }

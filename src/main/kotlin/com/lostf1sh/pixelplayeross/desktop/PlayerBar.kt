@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -43,7 +44,11 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
     var volumePreview by remember {mutableStateOf<Float?>(null)}
     val progress=if(state.duration>0)(state.time.toDouble()/state.duration).toFloat().coerceIn(0f,1f) else 0f
     val colors=MaterialTheme.colorScheme
-    Surface(color=colors.surfaceVariant,tonalElevation=4.dp) {
+    val barBackground = colors.surfaceVariant
+    val barContent = ensureContrast(colors.onSurface, barBackground, 4.5f)
+    val barSecondary = ensureContrast(colors.onSurfaceVariant, barBackground, 4.5f, fallback = barContent)
+    val barAccent = ensureContrast(colors.primary, barBackground, 3.0f, fallback = barContent)
+    Surface(color=barBackground,contentColor=barContent,tonalElevation=4.dp) {
         Box(Modifier.fillMaxWidth()) {
             val compact = isCompact
             Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp)) {
@@ -67,7 +72,7 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                     // Center: transport above progress.
                     Column(Modifier.weight(1.5f).widthIn(max=560.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-                            SmallPlayerButton("shuffle",if(state.shuffled) "Shuffle on" else "Shuffle off",state.ready,audio::toggleShuffle,active=state.shuffled)
+                            SmallPlayerButton("shuffle",if(state.shuffled) "Shuffle on" else "Shuffle off",state.ready,audio::toggleShuffle,active=state.shuffled,activeColor=barAccent)
                             SmallPlayerButton("previous","Previous track",state.ready && state.previous,audio::previous,size=40.dp)
                             FilledIconButton(onClick=audio::toggle,enabled=state.ready && state.song!=null,
                                 shape=CircleShape,modifier=Modifier.size(48.dp).semantics {
@@ -75,7 +80,7 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                                 }) {Glyph(if(state.playing)"pause" else "play",LocalContentColor.current)}
                             SmallPlayerButton("next","Next track",state.ready && state.next,audio::next,size=40.dp)
                             SmallPlayerButton(if(state.repeat==RepeatMode.ONE) "repeat_one" else "repeat","Repeat ${state.repeat}",
-                                state.ready,audio::cycleRepeat,active=state.repeat!=RepeatMode.OFF)
+                                state.ready,audio::cycleRepeat,active=state.repeat!=RepeatMode.OFF,activeColor=barAccent)
                         }
                         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             Text(trackClock(preview?.let {(it*state.duration).toLong()} ?: state.time),
@@ -90,7 +95,7 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                     // Right: actions, then volume on one row.
                     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(2.dp)) {
                         SmallPlayerButton(if(liked)"heart" else "liked",if(liked)"Unlike current track" else "Like current track",
-                            editable && state.song!=null,onLike)
+                            editable && state.song!=null,onLike,activeColor=barAccent)
                         SmallPlayerButton("playlist_add","Add current track to playlist",editable && state.song!=null,onAdd)
                         SmallPlayerButton("levels","Audio DSP & Equalizer",true,onEqualizer)
                         if (sleepTimerState?.isActive == true) {
@@ -104,12 +109,12 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Glyph("timer", MaterialTheme.colorScheme.primary, Modifier.size(14.dp))
+                                    Glyph("timer", ensureContrast(colors.primary, colors.primaryContainer, 3.0f, fallback = colors.onPrimaryContainer), Modifier.size(14.dp))
                                     Text(
                                         com.lostf1sh.pixelplayeross.desktop.system.SleepTimer.formatRemaining(sleepTimerState.remainingSeconds),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = ensureContrast(colors.onPrimaryContainer, colors.primaryContainer, 4.5f)
                                     )
                                 }
                             }
@@ -120,7 +125,7 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                         SmallPlayerButton("bubble","Collapse to floating player",true,onCollapse)
                         SmallPlayerButton("expand","Open full-screen player",state.song!=null,onExpand)
                         Spacer(Modifier.width(8.dp))
-                        Glyph(if(state.volume==0)"muted" else "volume",colors.onSurfaceVariant,Modifier.size(20.dp))
+                        Glyph(if(state.volume==0)"muted" else "volume",barSecondary,Modifier.size(20.dp))
                         Spacer(Modifier.width(6.dp))
                         CompactProgress(state.volume/100f,state.ready,"Volume",
                             Modifier.width(if(compact)72.dp else 104.dp).height(24.dp),
@@ -135,9 +140,9 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
 }
 
 @Composable
-private fun SmallPlayerButton(icon:String,label:String,enabled:Boolean,onClick:()->Unit,active:Boolean=false,size:Dp=36.dp) {
+private fun SmallPlayerButton(icon:String,label:String,enabled:Boolean,onClick:()->Unit,active:Boolean=false,activeColor:Color=MaterialTheme.colorScheme.primary,size:Dp=36.dp) {
     IconButton(onClick=onClick,enabled=enabled,modifier=Modifier.size(size).semantics {contentDescription=label}) {
-        val color=if((icon=="heart" || active) && enabled)MaterialTheme.colorScheme.primary else LocalContentColor.current
+        val color=if((icon=="heart" || active) && enabled)activeColor else LocalContentColor.current
         if(icon=="shuffle" || icon=="repeat" || icon=="repeat_one") ActiveControlGlyph(icon,color,active)
         else Glyph(icon,color)
     }

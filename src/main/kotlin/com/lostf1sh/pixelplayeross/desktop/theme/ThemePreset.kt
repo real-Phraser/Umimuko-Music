@@ -111,7 +111,7 @@ enum class ThemePreset(
                 surface = surface,
                 onSurface = Color(0xFFF8F8F2),
                 surfaceVariant = surfaceVar,
-                onSurfaceVariant = Color(0xFF6272A4),
+                onSurfaceVariant = Color(0xFFBCC5E2),
                 outline = Color(0xFF6272A4),
                 outlineVariant = Color(0xFF44475A)
             )
