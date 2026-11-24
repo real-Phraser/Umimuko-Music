@@ -10,13 +10,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.lostf1sh.pixelplayeross.desktop.AppIcon
 import com.lostf1sh.pixelplayeross.desktop.Glyph
+import com.lostf1sh.pixelplayeross.desktop.HoverLinkText
 import com.lostf1sh.pixelplayeross.desktop.StartupPrefs
+import java.awt.Desktop
+import java.net.URI
 import com.lostf1sh.pixelplayeross.desktop.dsp.CrossfadeCurve
 import com.lostf1sh.pixelplayeross.desktop.dsp.EqualizerDefaults
 import com.lostf1sh.pixelplayeross.desktop.playback.AudioController
@@ -605,6 +610,19 @@ private fun StatsTab() {
     }
 }
 
+private const val GITHUB_REPO_URL = "https://github.com/real-Phraser/Umimuko-Music"
+
+private fun openExternalUrl(url: String) {
+    Thread {
+        try {
+            if (Desktop.isDesktopSupported()) {
+                Desktop.getDesktop().browse(URI(url))
+            }
+        } catch (_: Exception) {
+        }
+    }.start()
+}
+
 @Composable
 private fun AboutTab() {
     Column(
@@ -630,7 +648,28 @@ private fun AboutTab() {
         Text("Open Source Technologies", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         Text("JetBrains Compose Multiplatform · VLCJ / LibVLC · JAudioTagger · Skiko", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        Spacer(Modifier.height(16.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Image(
+                painter = painterResource("branding/github.png"),
+                contentDescription = "GitHub",
+                modifier = Modifier.size(18.dp),
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary)
+            )
+            HoverLinkText(
+                text = "github.com/real-Phraser/Umimuko-Music",
+                enabled = true,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
+                ),
+                onClick = { openExternalUrl(GITHUB_REPO_URL) }
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
 
         Text("Crafted with care by Phraser & Contributors", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
