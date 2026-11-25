@@ -91,13 +91,19 @@ export function DuplicatesDialog() {
             type="button"
             disabled={isScanning || tracksCount < 2}
             onClick={() => void runScan()}
-            className="px-4 py-2 rounded-full text-xs font-semibold cursor-pointer disabled:opacity-45"
+            className="h-10 px-5 rounded-full text-sm font-medium flex items-center gap-2 cursor-pointer disabled:opacity-45 transition-opacity hover:opacity-90"
             style={{
               backgroundColor: "var(--accent)",
               color: "var(--on-accent)",
             }}
           >
-            {isScanning ? "Scanning..." : scanCompleted ? "Rescan" : "Scan Library"}
+            {isScanning && (
+              <span
+                className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin"
+                style={{ borderColor: "var(--on-accent)", borderTopColor: "transparent" }}
+              />
+            )}
+            <span>{scanCompleted ? "Rescan" : "Scan Library"}</span>
           </button>
         }
       >
@@ -135,7 +141,7 @@ export function DuplicatesDialog() {
               <button
                 type="button"
                 onClick={() => void handleResolveAll()}
-                className="px-3 py-1.5 rounded-full text-xs font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+                className="h-9 px-3.5 rounded-full text-xs font-medium hover:bg-[var(--surface-variant)] cursor-pointer transition-colors"
                 style={{ color: "var(--accent)" }}
               >
                 Resolve All (Keep Best Quality)
@@ -171,7 +177,7 @@ export function DuplicatesDialog() {
 
                     {/* Recommended keeper */}
                     <div
-                      className="p-2 rounded-lg flex items-center gap-2"
+                      className="p-2 rounded-[8px] flex items-center gap-2"
                       style={{
                         backgroundColor: "rgba(var(--accent-rgb), 0.08)",
                       }}
@@ -202,7 +208,7 @@ export function DuplicatesDialog() {
                       return (
                         <div
                           key={cand.id}
-                          className="p-2 rounded-lg flex items-center gap-2"
+                          className="p-2 rounded-[8px] flex items-center gap-2"
                           style={{ backgroundColor: "var(--surface-1)" }}
                         >
                           <div className="min-w-0 flex-1">
@@ -220,7 +226,7 @@ export function DuplicatesDialog() {
 
                           {playing ? (
                             <span
-                              className="px-2 py-1 rounded text-[11px] font-bold shrink-0"
+                              className="px-2 py-1 rounded-[4px] text-[11px] font-bold shrink-0"
                               style={{
                                 backgroundColor: "var(--accent-container)",
                                 color: "var(--accent)",
@@ -234,7 +240,7 @@ export function DuplicatesDialog() {
                               onClick={() =>
                                 void handleDeleteCandidate(cand.id, cand.title, cand.path)
                               }
-                              className="h-8 px-2.5 rounded-full text-[11px] font-medium shrink-0 cursor-pointer"
+                              className="h-8 px-3 rounded-full text-[11px] font-medium shrink-0 cursor-pointer hover:bg-[var(--danger-container)] transition-colors"
                               style={{
                                 border: "1px solid var(--danger)",
                                 color: "var(--danger)",
@@ -255,7 +261,7 @@ export function DuplicatesDialog() {
               <button
                 type="button"
                 onClick={() => openDialog(null)}
-                className="px-5 py-2 rounded-full text-sm font-medium cursor-pointer"
+                className="h-10 px-5 rounded-full text-sm font-medium cursor-pointer transition-opacity hover:opacity-90"
                 style={{
                   backgroundColor: "var(--accent-container)",
                   color: "var(--on-accent-container)",
@@ -270,20 +276,20 @@ export function DuplicatesDialog() {
 
       {activeTrackAlert && (
         <div
-          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/50"
+          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/55 backdrop-blur-[2px]"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setActiveTrackAlert(null);
           }}
         >
           <div
-            className="w-full max-w-sm rounded-[24px] p-6 space-y-4 shadow-2xl"
+            className="w-full max-w-sm rounded-[28px] p-6 space-y-4 shadow-2xl"
             style={{
               backgroundColor: "var(--surface-2)",
               border: "1px solid var(--outline)",
               color: "var(--text-primary)",
             }}
           >
-            <h3 className="text-lg font-bold">Active Track Protection</h3>
+            <h3 className="text-[22px] leading-7 font-normal">Active Track Protection</h3>
             <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
               {activeTrackAlert}
             </p>
@@ -291,7 +297,7 @@ export function DuplicatesDialog() {
               <button
                 type="button"
                 onClick={() => setActiveTrackAlert(null)}
-                className="px-4 py-2 rounded-full text-sm font-medium cursor-pointer"
+                className="h-10 px-4 rounded-full text-sm font-medium cursor-pointer hover:bg-[var(--surface-variant)]"
                 style={{ color: "var(--accent)" }}
               >
                 OK

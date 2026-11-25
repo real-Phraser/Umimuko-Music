@@ -469,10 +469,9 @@ export function LibraryView({ canGoBack = true, onBack }: LibraryViewProps) {
       {/* Expandable Search Bar (LibraryPanel.kt lines 505-523) */}
       {searchOpen && (
         <div
-          className="shrink-0 flex items-center gap-3 px-4 py-3 rounded-[24px]"
+          className="shrink-0 flex items-center gap-3 px-4 py-3 rounded-[24px] border border-[var(--outline-strong)] focus-within:border-[var(--accent)] transition-colors"
           style={{
             backgroundColor: "var(--surface-0)",
-            border: "1px solid var(--outline-strong)",
           }}
         >
           <Icon name="search" size={20} style={{ color: "var(--text-secondary)" }} />
@@ -542,28 +541,36 @@ export function LibraryView({ canGoBack = true, onBack }: LibraryViewProps) {
                       onClick={() => setSortMenuOpen(false)}
                     />
                     <div
-                      className="absolute right-0 top-11 z-40 w-44 py-1.5 rounded-2xl shadow-xl text-xs"
+                      className="absolute right-0 top-11 z-40 w-48 py-1.5 rounded-xl shadow-2xl border"
                       style={{
                         backgroundColor: "var(--surface-3)",
-                        border: "1px solid var(--outline)",
+                        borderColor: "var(--outline)",
+                        boxShadow: "var(--shadow-elevated)",
                       }}
                     >
-                      {SORT_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.field}
-                          type="button"
-                          onClick={() => {
-                            setSort(opt.field);
-                            setSortMenuOpen(false);
-                          }}
-                          className="w-full px-3.5 py-2 text-left flex items-center justify-between hover:bg-[var(--surface-variant)] cursor-pointer"
-                        >
-                          <span>{opt.label}</span>
-                          {sortBy === opt.field && (
-                            <span>{sortDir === "asc" ? "↑" : "↓"}</span>
-                          )}
-                        </button>
-                      ))}
+                      {SORT_OPTIONS.map((opt) => {
+                        const isSelected = sortBy === opt.field;
+                        return (
+                          <button
+                            key={opt.field}
+                            type="button"
+                            onClick={() => {
+                              setSort(opt.field);
+                              setSortMenuOpen(false);
+                            }}
+                            className="w-full px-3.5 py-2.5 text-left text-[13px] leading-[18px] flex items-center justify-between hover:bg-[var(--surface-variant)] cursor-pointer transition-colors"
+                            style={{
+                              fontWeight: isSelected ? 600 : 500,
+                              color: isSelected ? "var(--accent)" : "var(--text-primary)",
+                            }}
+                          >
+                            <span>{opt.label}</span>
+                            {isSelected && (
+                              <span>{sortDir === "asc" ? "↑" : "↓"}</span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -786,30 +793,34 @@ export function LibraryView({ canGoBack = true, onBack }: LibraryViewProps) {
             onSubmit={(e) => void handleCreatePlaylist(e)}
             className="w-full max-w-[400px] p-6 rounded-[28px] flex flex-col gap-[18px] shadow-2xl"
             style={{
-              backgroundColor: "var(--surface-1)",
+              backgroundColor: "var(--surface-2)",
               border: "1px solid var(--outline)",
             }}
           >
             <h2 className="text-[22px] leading-[28px] font-normal">
               New playlist
             </h2>
-            <input
-              type="text"
-              autoFocus
-              value={newPlaylistName}
-              onChange={(e) => setNewPlaylistName(e.target.value)}
-              placeholder="Playlist name"
-              className="w-full px-4 py-3 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: "var(--surface-0)",
-                border: "1px solid var(--outline-strong)",
-              }}
-            />
+            <label className="block space-y-1">
+              <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                Playlist name
+              </span>
+              <input
+                type="text"
+                autoFocus
+                value={newPlaylistName}
+                onChange={(e) => setNewPlaylistName(e.target.value)}
+                placeholder="Playlist name"
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border border-[var(--outline-strong)] focus:border-[var(--accent)] transition-colors"
+                style={{
+                  backgroundColor: "var(--surface-1)",
+                }}
+              />
+            </label>
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setNewPlaylistModal(false)}
-                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+                className="h-10 px-4 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] cursor-pointer transition-colors"
                 style={{ color: "var(--accent)" }}
               >
                 Cancel
@@ -817,7 +828,7 @@ export function LibraryView({ canGoBack = true, onBack }: LibraryViewProps) {
               <button
                 type="submit"
                 disabled={!newPlaylistName.trim()}
-                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
+                className="h-10 px-4 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer transition-colors"
                 style={{ color: "var(--accent)" }}
               >
                 Save
@@ -838,7 +849,7 @@ export function LibraryView({ canGoBack = true, onBack }: LibraryViewProps) {
           <div
             className="w-full max-w-[400px] p-6 rounded-[28px] flex flex-col gap-[18px] shadow-2xl"
             style={{
-              backgroundColor: "var(--surface-1)",
+              backgroundColor: "var(--surface-2)",
               border: "1px solid var(--outline)",
             }}
           >
@@ -855,7 +866,7 @@ export function LibraryView({ canGoBack = true, onBack }: LibraryViewProps) {
               <button
                 type="button"
                 onClick={() => setDeletePlaylistConfirm(false)}
-                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+                className="h-10 px-4 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] cursor-pointer transition-colors"
                 style={{ color: "var(--accent)" }}
               >
                 Cancel
@@ -866,7 +877,7 @@ export function LibraryView({ canGoBack = true, onBack }: LibraryViewProps) {
                   await deletePlaylist(activePlaylist.id);
                   setDeletePlaylistConfirm(false);
                 }}
-                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+                className="h-10 px-4 rounded-full text-sm font-medium hover:bg-[var(--danger-container)] cursor-pointer transition-colors"
                 style={{ color: "var(--danger)" }}
               >
                 Delete

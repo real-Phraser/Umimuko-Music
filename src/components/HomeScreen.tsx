@@ -98,10 +98,11 @@ function ShelfCard({
             />
             <div
               onClick={(e) => e.stopPropagation()}
-              className="absolute right-0 top-7 z-40 w-44 py-1.5 rounded-2xl shadow-xl text-xs"
+              className="absolute right-0 top-8 z-40 w-48 py-1.5 rounded-xl shadow-2xl border"
               style={{
                 backgroundColor: "var(--surface-3)",
-                border: "1px solid var(--outline)",
+                borderColor: "var(--outline)",
+                boxShadow: "var(--shadow-elevated)",
               }}
             >
               <button
@@ -110,7 +111,7 @@ function ShelfCard({
                   setMenuOpen(false);
                   onOpen();
                 }}
-                className="w-full px-3.5 py-2 text-left hover:bg-[var(--surface-variant)] cursor-pointer"
+                className="w-full px-3.5 py-2.5 text-left text-[13px] leading-[18px] font-medium hover:bg-[var(--surface-variant)] cursor-pointer transition-colors"
               >
                 Open {item.type}
               </button>
@@ -121,7 +122,7 @@ function ShelfCard({
                   void enqueueTracks(item.trackIds, true);
                   setMenuOpen(false);
                 }}
-                className="w-full px-3.5 py-2 text-left hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
+                className="w-full px-3.5 py-2.5 text-left text-[13px] leading-[18px] font-medium hover:bg-[var(--surface-variant)] disabled:opacity-38 cursor-pointer transition-colors"
               >
                 Play next
               </button>
@@ -132,7 +133,7 @@ function ShelfCard({
                   void enqueueTracks(item.trackIds, false);
                   setMenuOpen(false);
                 }}
-                className="w-full px-3.5 py-2 text-left hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
+                className="w-full px-3.5 py-2.5 text-left text-[13px] leading-[18px] font-medium hover:bg-[var(--surface-variant)] disabled:opacity-38 cursor-pointer transition-colors"
               >
                 Add to queue
               </button>
@@ -143,9 +144,9 @@ function ShelfCard({
                     void togglePin(item.pinTrackId!);
                     setMenuOpen(false);
                   }}
-                  className="w-full px-3.5 py-2 text-left flex items-center gap-2 hover:bg-[var(--surface-variant)] cursor-pointer"
+                  className="w-full px-3.5 py-2.5 text-left text-[13px] leading-[18px] font-medium flex items-center gap-3 hover:bg-[var(--surface-variant)] cursor-pointer transition-colors"
                 >
-                  <Icon name={item.pinned ? "unpin" : "pin"} size={16} />
+                  <Icon name={item.pinned ? "unpin" : "pin"} size={18} />
                   <span>{item.pinned ? "Unpin from Home" : "Pin to Home"}</span>
                 </button>
               )}
@@ -540,10 +541,9 @@ export function HomeScreen({ canGoBack = false, onBack }: HomeScreenProps) {
       {/* Expandable Search Bar (LibraryPanel.kt lines 505-523) */}
       {searchOpen && (
         <div
-          className="shrink-0 flex items-center gap-3 px-4 py-3 rounded-[24px]"
+          className="shrink-0 flex items-center gap-3 px-4 py-3 rounded-[24px] border border-[var(--outline-strong)] focus-within:border-[var(--accent)] transition-colors"
           style={{
             backgroundColor: "var(--surface-0)",
-            border: "1px solid var(--outline-strong)",
           }}
         >
           <Icon name="search" size={20} style={{ color: "var(--text-secondary)" }} />
