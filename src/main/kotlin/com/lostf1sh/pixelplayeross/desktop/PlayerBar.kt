@@ -83,13 +83,14 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                                 state.ready,audio::cycleRepeat,active=state.repeat!=RepeatMode.OFF,activeColor=barAccent)
                         }
                         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            val tabularLabelStyle = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
                             Text(trackClock(preview?.let {(it*state.duration).toLong()} ?: state.time),
-                                Modifier.width(38.dp),style=MaterialTheme.typography.labelSmall,textAlign=TextAlign.End)
+                                Modifier.width(38.dp),style=tabularLabelStyle,textAlign=TextAlign.End,maxLines=1,softWrap=false)
                             key(state.song?.id) {
                                 CompactProgress(progress,state.ready && state.seekable && state.duration>0,"Playback position",
                                     Modifier.weight(1f).height(24.dp),onPreview={preview=it},onCommit=audio::seek)
                             }
-                            Text(trackClock(state.duration),Modifier.width(38.dp),style=MaterialTheme.typography.labelSmall)
+                            Text(trackClock(state.duration),Modifier.width(38.dp),style=tabularLabelStyle,maxLines=1,softWrap=false)
                         }
                     }
                     // Right: actions, then volume on one row.
@@ -112,9 +113,13 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                                     Glyph("timer", ensureContrast(colors.primary, colors.primaryContainer, 3.0f, fallback = colors.onPrimaryContainer), Modifier.size(14.dp))
                                     Text(
                                         com.lostf1sh.pixelplayeross.desktop.system.SleepTimer.formatRemaining(sleepTimerState.remainingSeconds),
-                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.widthIn(min = 44.dp),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                                         fontWeight = FontWeight.Bold,
-                                        color = ensureContrast(colors.onPrimaryContainer, colors.primaryContainer, 4.5f)
+                                        color = ensureContrast(colors.onPrimaryContainer, colors.primaryContainer, 4.5f),
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -131,7 +136,8 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                             Modifier.width(if(compact)72.dp else 104.dp).height(24.dp),
                             onPreview={volumePreview=it},onCommit={audio.volume((it*100).toInt())})
                         if(!compact) Text("${((volumePreview ?: (state.volume/100f))*100).toInt()}%",
-                            Modifier.width(38.dp),style=MaterialTheme.typography.labelSmall,textAlign=TextAlign.End)
+                            Modifier.width(38.dp),style=MaterialTheme.typography.labelSmall.copy(fontFeatureSettings="tnum"),
+                            textAlign=TextAlign.End,maxLines=1,softWrap=false)
                     }
                 }
             }
