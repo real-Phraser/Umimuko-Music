@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Umimuko Music",
+  "version": "0.26.1",
+  "identifier": "com.umimuko.music",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Umimuko Music",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600
+      },
+      {
+        "label": "mini-player",
+        "title": "Umimuko Mini Player",
+        "url": "index.html?window=mini-player",
+        "width": 360,
+        "height": 160,
+        "alwaysOnTop": true,
+        "decorations": false,
+        "transparent": true,
+        "resizable": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/umimuko.png",
+      "icons/umimuko.icns",
+      "icons/umimuko.ico"
+    ]
+  }
+}

@@ -1,10 +1,9 @@
-# Build and cache directories
-.gradle/
-build/
-**/build/
-**/.gradle/
-.kotlin/
-**/.kotlin/
+# Node / Vite
+node_modules/
+dist/
+
+# Rust / Tauri
+src-tauri/target/
 
 # OS specific files
 .DS_Store
