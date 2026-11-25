@@ -51,10 +51,19 @@ pub struct SpicyLyrics {
 pub struct SpicyLyricsParser;
 
 impl SpicyLyricsParser {
-    /// Auto-detects TTML, LRC (standard or enhanced), or plain text lyrics.
+    /// Auto-detects Spicy JSON, TTML, LRC (standard or enhanced), or plain text lyrics.
     pub fn parse_auto(raw: &str, source: &str) -> SpicyLyrics {
         let trimmed = raw.trim();
-        if trimmed.starts_with('<') && (trimmed.contains("<tt") || trimmed.contains("<p ")) {
+        if trimmed.starts_with('{') {
+            if let Some(parsed) = Self::parse_spicy_json(trimmed, source) {
+                if !parsed.lines.is_empty() {
+                    return parsed;
+                }
+            }
+        }
+        if trimmed.contains("<tt") && trimmed.contains("</tt>")
+            || (trimmed.starts_with('<') && (trimmed.contains("<tt") || trimmed.contains("<p ")))
+        {
             if let Ok(parsed) = Self::parse_ttml(trimmed, source) {
                 if !parsed.lines.is_empty() {
                     return parsed;
@@ -68,6 +77,69 @@ impl SpicyLyricsParser {
             }
         }
         Self::parse_plain(raw, source)
+    }
+
+    /// Parses a Spicy Lyrics v1 API JSON response (`Body.Type`, `Body.Content`, `Lead`, `Background`, `Syllables`, `Words`).
+    pub fn parse_spicy_json(json: &str, default_source: &str) -> Option<SpicyLyrics> {
+        let trimmed = json.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let root: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+        let root_obj = root.as_object()?;
+        let body = root_obj
+            .get("Body")
+            .and_then(|v| v.as_object())
+            .unwrap_or(root_obj);
+
+        let source = root_obj
+            .get("source")
+            .or_else(|| root_obj.get("Source"))
+            .or_else(|| body.get("source"))
+            .or_else(|| body.get("Source"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(default_source)
+            .to_string();
+
+        let raw_type = body
+            .get("Type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let kind = match raw_type.as_str() {
+            "syllable" | "word" => LyricsKind::Syllable,
+            "line" => LyricsKind::Line,
+            "static" => LyricsKind::Static,
+            _ => LyricsKind::Static,
+        };
+
+        let raw_content = body.get("Content").and_then(|v| v.as_array())?;
+        let mut parsed_lines: Vec<LyricsLine> = Vec::new();
+        for item in raw_content {
+            if let Some(obj) = item.as_object() {
+                if let Some(line) = parse_spicy_content_item(obj, kind, false) {
+                    parsed_lines.push(line);
+                }
+            }
+        }
+
+        if parsed_lines.is_empty() {
+            return None;
+        }
+
+        if kind != LyricsKind::Static {
+            parsed_lines.sort_by_key(|l| l.start_ms.unwrap_or(0));
+        }
+
+        Some(SpicyLyrics {
+            kind,
+            source,
+            lines: parsed_lines,
+            raw: json.to_string(),
+        })
     }
 
     /// Parses TTML lyrics (line-level & word-level `<span>` timestamps, `ttm:role="x-bg"`
@@ -448,6 +520,215 @@ fn parse_enhanced_lrc_words(content: &str) -> (String, Vec<LyricsWord>) {
     (plain.trim().to_string(), words)
 }
 
+fn seconds_to_ms(value: Option<&serde_json::Value>) -> Option<i64> {
+    let val = value?;
+    if let Some(n) = val.as_f64() {
+        if n.is_finite() {
+            return Some((n * 1000.0).round().max(0.0) as i64);
+        }
+    } else if let Some(s) = val.as_str() {
+        if let Ok(n) = s.trim().parse::<f64>() {
+            if n.is_finite() {
+                return Some((n * 1000.0).round().max(0.0) as i64);
+            }
+        }
+    }
+    None
+}
+
+struct ParsedSpicySyllable {
+    text: String,
+    start_ms: i64,
+    end_ms: i64,
+    is_part_of_word: bool,
+    romanized: Option<String>,
+}
+
+fn parse_spicy_syllable(obj: &serde_json::Map<String, serde_json::Value>) -> Option<ParsedSpicySyllable> {
+    let text = obj.get("Text").and_then(|v| v.as_str())?.to_string();
+    let start_ms = seconds_to_ms(obj.get("StartTime")).unwrap_or(0);
+    let end_ms = seconds_to_ms(obj.get("EndTime")).unwrap_or(start_ms).max(start_ms);
+    let is_part_of_word = obj
+        .get("IsPartOfWord")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let romanized = obj
+        .get("RomanizedText")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    Some(ParsedSpicySyllable {
+        text,
+        start_ms,
+        end_ms,
+        is_part_of_word,
+        romanized,
+    })
+}
+
+fn join_spicy_syllables_text<F>(syllables: &[ParsedSpicySyllable], selector: F) -> String
+where
+    F: Fn(&ParsedSpicySyllable) -> &str,
+{
+    let mut out = String::new();
+    for i in 0..syllables.len() {
+        let part = selector(&syllables[i]);
+        if part.is_empty() {
+            continue;
+        }
+        out.push_str(part);
+        if !syllables[i].is_part_of_word
+            && i + 1 < syllables.len()
+            && !part.ends_with(' ')
+            && !selector(&syllables[i + 1]).starts_with(' ')
+        {
+            out.push(' ');
+        }
+    }
+    out.trim_end().to_string()
+}
+
+fn parse_spicy_content_item(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    parent_kind: LyricsKind,
+    is_background: bool,
+) -> Option<LyricsLine> {
+    let opposite_aligned = obj
+        .get("OppositeAligned")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let main_obj = obj.get("Lead").and_then(|v| v.as_object()).unwrap_or(obj);
+
+    let raw_syllables = main_obj
+        .get("Syllables")
+        .or_else(|| main_obj.get("Words"))
+        .and_then(|v| v.as_array());
+    let syllables: Vec<ParsedSpicySyllable> = raw_syllables
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_object().and_then(parse_spicy_syllable))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let explicit_text = main_obj
+        .get("Text")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim_end())
+        .filter(|s| !s.is_empty());
+    let text = match explicit_text {
+        Some(t) => t.to_string(),
+        None if !syllables.is_empty() => join_spicy_syllables_text(&syllables, |s| &s.text),
+        None => String::new(),
+    };
+
+    let explicit_romanized = main_obj
+        .get("RomanizedText")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let romanized = explicit_romanized.or_else(|| {
+        if syllables.iter().any(|s| s.romanized.is_some()) {
+            let joined = join_spicy_syllables_text(&syllables, |s| {
+                s.romanized.as_deref().unwrap_or("")
+            });
+            let trimmed = joined.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        } else {
+            None
+        }
+    });
+
+    let mut background_words: Vec<LyricsWord> = Vec::new();
+    if let Some(bg_arr) = obj.get("Background").and_then(|v| v.as_array()) {
+        for bg_item in bg_arr {
+            if let Some(bg_map) = bg_item.as_object() {
+                if let Some(bg_line) = parse_spicy_content_item(bg_map, parent_kind, true) {
+                    if !bg_line.words.is_empty() {
+                        background_words.extend(bg_line.words);
+                    } else if !bg_line.text.is_empty() {
+                        let start_ms = bg_line.start_ms.unwrap_or(0);
+                        let end_ms = bg_line.end_ms.unwrap_or(start_ms);
+                        background_words.push(LyricsWord {
+                            text: bg_line.text,
+                            start_ms,
+                            end_ms,
+                            is_background: true,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if text.is_empty() && syllables.is_empty() && background_words.is_empty() {
+        return None;
+    }
+
+    let start_ms = seconds_to_ms(main_obj.get("StartTime"))
+        .or_else(|| seconds_to_ms(obj.get("StartTime")))
+        .or_else(|| syllables.first().map(|s| s.start_ms))
+        .unwrap_or(0);
+    let end_ms = seconds_to_ms(main_obj.get("EndTime"))
+        .or_else(|| seconds_to_ms(obj.get("EndTime")))
+        .or_else(|| syllables.last().map(|s| s.end_ms))
+        .unwrap_or(start_ms)
+        .max(start_ms);
+
+    let words: Vec<LyricsWord> = if parent_kind == LyricsKind::Syllable || !syllables.is_empty() {
+        let len = syllables.len();
+        syllables
+            .into_iter()
+            .enumerate()
+            .map(|(i, s)| {
+                // Preserve trailing space for whole words so frontend word-grouping splits properly
+                let mut w_text = s.text;
+                if !s.is_part_of_word && !w_text.ends_with(' ') && i + 1 < len {
+                    w_text.push(' ');
+                }
+                LyricsWord {
+                    text: w_text,
+                    start_ms: s.start_ms,
+                    end_ms: s.end_ms,
+                    is_background,
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    Some(LyricsLine {
+        text,
+        start_ms: if parent_kind == LyricsKind::Static {
+            None
+        } else {
+            Some(start_ms)
+        },
+        end_ms: if parent_kind == LyricsKind::Static {
+            None
+        } else {
+            Some(end_ms)
+        },
+        words,
+        background_words,
+        romanized,
+        is_background,
+        alignment: if opposite_aligned {
+            Some("right".to_string())
+        } else {
+            None
+        },
+    })
+}
+
 /// Parses TTML or LRC timestamps (`HH:MM:SS.mmm`, `MM:SS.xx`, `SS.mmm`, `12.3s`, `1234ms`).
 pub fn parse_timestamp_ms(raw: &str) -> Option<i64> {
     let s = raw.trim();
@@ -560,5 +841,93 @@ mod tests {
         assert_eq!(parsed.kind, LyricsKind::Static);
         assert_eq!(parsed.lines.len(), 2);
         assert_eq!(parsed.lines[0].start_ms, None);
+    }
+
+    #[test]
+    fn test_parse_spicy_json_syllable_with_lead_and_background() {
+        let json = r#"{
+            "source": "AppleMusic",
+            "Body": {
+                "Type": "Syllable",
+                "StartTime": 10.5,
+                "EndTime": 15.25,
+                "Content": [
+                    {
+                        "Type": "Vocal",
+                        "OppositeAligned": true,
+                        "Lead": {
+                            "StartTime": 10.5,
+                            "EndTime": 14.0,
+                            "Syllables": [
+                                { "Text": "Hel", "StartTime": 10.5, "EndTime": 11.0, "IsPartOfWord": true, "RomanizedText": "he" },
+                                { "Text": "lo", "StartTime": 11.0, "EndTime": 11.8, "IsPartOfWord": false, "RomanizedText": "lo" },
+                                { "Text": "world", "StartTime": 12.0, "EndTime": 13.5, "IsPartOfWord": false, "RomanizedText": "w" }
+                            ]
+                        },
+                        "Background": [
+                            {
+                                "StartTime": 13.6,
+                                "EndTime": 15.0,
+                                "Text": "(yeah)",
+                                "Syllables": [
+                                    { "Text": "(yeah)", "StartTime": 13.6, "EndTime": 15.0, "IsPartOfWord": false }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+
+        let parsed = SpicyLyricsParser::parse_auto(json, "SpicyLyrics");
+        assert_eq!(parsed.kind, LyricsKind::Syllable);
+        assert_eq!(parsed.source, "AppleMusic");
+        assert_eq!(parsed.lines.len(), 1);
+        let line = &parsed.lines[0];
+        assert_eq!(line.text, "Hello world");
+        assert_eq!(line.start_ms, Some(10_500));
+        assert_eq!(line.end_ms, Some(14_000));
+        assert_eq!(line.alignment.as_deref(), Some("right"));
+        assert_eq!(line.romanized.as_deref(), Some("helo w"));
+        assert_eq!(line.words.len(), 3);
+        assert_eq!(line.words[0].text, "Hel");
+        assert_eq!(line.words[1].text, "lo ");
+        assert_eq!(line.words[2].text, "world");
+        assert_eq!(line.background_words.len(), 1);
+        assert_eq!(line.background_words[0].text, "(yeah)");
+        assert!(line.background_words[0].is_background);
+    }
+
+    #[test]
+    fn test_parse_spicy_json_line_and_static() {
+        let line_json = r#"{
+            "Body": {
+                "Type": "Line",
+                "Content": [
+                    { "StartTime": 5.0, "EndTime": 8.0, "Text": "Second" },
+                    { "StartTime": 1.0, "EndTime": 4.0, "Text": "First" }
+                ]
+            }
+        }"#;
+        let parsed = SpicyLyricsParser::parse_spicy_json(line_json, "SpicyLyrics").unwrap();
+        assert_eq!(parsed.kind, LyricsKind::Line);
+        assert_eq!(parsed.lines.len(), 2);
+        assert_eq!(parsed.lines[0].text, "First");
+        assert_eq!(parsed.lines[0].start_ms, Some(1000));
+        assert_eq!(parsed.lines[1].text, "Second");
+
+        let static_json = r#"{
+            "Body": {
+                "Type": "Static",
+                "Content": [
+                    { "Text": "Line A" },
+                    { "Text": "Line B" }
+                ]
+            }
+        }"#;
+        let parsed_static = SpicyLyricsParser::parse_spicy_json(static_json, "SpicyLyrics").unwrap();
+        assert_eq!(parsed_static.kind, LyricsKind::Static);
+        assert_eq!(parsed_static.lines[0].start_ms, None);
+        assert_eq!(parsed_static.lines[1].text, "Line B");
     }
 }

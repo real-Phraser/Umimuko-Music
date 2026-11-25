@@ -209,6 +209,7 @@ pub struct AppSettingsDto {
     pub theme: String,
     pub adaptive_accent: bool,
     pub folders: Vec<String>,
+    #[serde(alias = "spicy_lyrics_api_key")]
     pub spicy_lyrics_api_key: String,
     pub crossfade: CrossfadeConfigDto,
     pub equalizer: EqualizerConfigDto,
@@ -658,6 +659,24 @@ pub fn load_app_settings(db: &Database) -> AppSettingsDto {
         .and_then(|json| serde_json::from_str::<AppSettingsDto>(&json).ok())
         .unwrap_or_default();
 
+    if settings.spicy_lyrics_api_key.trim().is_empty() {
+        for key in [
+            "spicyLyricsApiKey",
+            "spicy_lyrics_api_key",
+            "legacy.spicyLyricsApiKey",
+            "legacy.spicy_lyrics_api_key",
+            "legacy.apiKey",
+        ] {
+            if let Ok(Some(val)) = db.get_setting(key) {
+                let trimmed = val.trim();
+                if !trimmed.is_empty() {
+                    settings.spicy_lyrics_api_key = trimmed.to_string();
+                    break;
+                }
+            }
+        }
+    }
+
     if let Ok(folders) = db.list_folders() {
         let db_folders: Vec<String> = folders.into_iter().map(|f| f.path).collect();
         if !db_folders.is_empty() {
@@ -754,20 +773,28 @@ fn convert_parsed_lyrics(track_id: String, parsed: Option<ParsedLyrics>) -> Spic
         .map(|l| {
             let start_ms = l.start_ms.unwrap_or(0);
             let end_ms = l.end_ms.unwrap_or(start_ms + 3000);
-            let words = if l.words.is_empty() {
+            let mut all_words: Vec<LyricWordDto> = l
+                .words
+                .into_iter()
+                .map(|w| LyricWordDto {
+                    text: w.text,
+                    start_ms: w.start_ms,
+                    end_ms: w.end_ms,
+                    is_background: if w.is_background { Some(true) } else { None },
+                })
+                .collect();
+            for bw in l.background_words {
+                all_words.push(LyricWordDto {
+                    text: bw.text,
+                    start_ms: bw.start_ms,
+                    end_ms: bw.end_ms,
+                    is_background: Some(true),
+                });
+            }
+            let words = if all_words.is_empty() {
                 None
             } else {
-                Some(
-                    l.words
-                        .into_iter()
-                        .map(|w| LyricWordDto {
-                            text: w.text,
-                            start_ms: w.start_ms,
-                            end_ms: w.end_ms,
-                            is_background: if w.is_background { Some(true) } else { None },
-                        })
-                        .collect(),
-                )
+                Some(all_words)
             };
             let is_instrumental = if l.text.trim() == "•••" || l.text.trim().is_empty() {
                 Some(true)
