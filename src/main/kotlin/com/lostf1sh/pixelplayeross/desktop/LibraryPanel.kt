@@ -20,13 +20,17 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
@@ -381,52 +385,46 @@ fun LibraryPanel(
                     verticalArrangement=Arrangement.spacedBy(10.dp)) {
                     if(!wide) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                        val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
                         val shape = RoundedCornerShape(8.dp)
                         LibraryTab.entries.forEach { item ->
                             val selected = tab == item
-                            val interactionSource = remember { MutableInteractionSource() }
-                            val isHovered by interactionSource.collectIsHoveredAsState()
-
                             val containerColor by animateColorAsState(
-                                when {
-                                    selected -> MaterialTheme.colorScheme.primaryContainer
-                                    isHovered -> if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.65f)
-                                    else -> Color.Transparent
-                                }
+                                if (selected) MaterialTheme.colorScheme.primaryContainer
+                                else Color.Transparent
                             )
                             val contentColor by animateColorAsState(
                                 if (selected) MaterialTheme.colorScheme.onPrimaryContainer
                                 else MaterialTheme.colorScheme.onSurface
                             )
                             val borderColor by animateColorAsState(
-                                when {
-                                    selected -> Color.Transparent
-                                    isHovered -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.9f)
-                                    else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                }
+                                if (selected) Color.Transparent
+                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                             )
 
-                            Box(
+                            Surface(
+                                onClick = { navigate(item) },
                                 modifier = Modifier
                                     .height(32.dp)
                                     .clip(shape)
-                                    .clickable(
-                                        interactionSource = interactionSource,
-                                        indication = null
-                                    ) { navigate(item) }
                                     .pointerHoverIcon(PointerIcon.Hand)
-                                    .background(containerColor, shape)
-                                    .border(1.dp, borderColor, shape)
-                                    .padding(horizontal = 16.dp),
-                                contentAlignment = Alignment.Center
+                                    .semantics { this.selected = selected },
+                                shape = shape,
+                                color = containerColor,
+                                contentColor = contentColor,
+                                border = if (selected) null else BorderStroke(1.dp, borderColor)
                             ) {
-                                Text(
-                                    item.title,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                                    color = contentColor
-                                )
+                                Box(
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        item.title,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
                             }
                         }
                     }
@@ -445,14 +443,51 @@ fun LibraryPanel(
                                 else -> if(showGroups) countLabel(visibleGroups.size,tab.title.dropLast(1).lowercase()) else countLabel(tracks.size,"track")
                             },maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall)
                         }
-                        FilledTonalIconButton(onClick={searchOpen=!searchOpen;if(!searchOpen)query=""},
-                            shape=RoundedCornerShape(50),
-                            modifier=Modifier.size(width=56.dp,height=40.dp).semantics {contentDescription=if(searchOpen)"Close search" else "Open search"}) {
-                            Glyph("search",LocalContentColor.current,Modifier.size(20.dp))
+                        val searchShape = RoundedCornerShape(50)
+                        Surface(
+                            onClick = { searchOpen = !searchOpen; if (!searchOpen) query = "" },
+                            shape = searchShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier
+                                .size(width = 56.dp, height = 40.dp)
+                                .clip(searchShape)
+                                .pointerHoverIcon(PointerIcon.Hand)
+                                .semantics {
+                                    role = Role.Button
+                                    contentDescription = if (searchOpen) "Close search" else "Open search"
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Glyph("search", LocalContentColor.current, Modifier.size(20.dp))
+                            }
                         }
                         Spacer(Modifier.width(8.dp))
-                        Button(enabled=!busy && folderStoreReady,modifier=Modifier.height(40.dp),
-                            contentPadding=PaddingValues(start=14.dp,end=18.dp),onClick=triggerAddFolder) {Glyph("folder",LocalContentColor.current,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Add folder",style=MaterialTheme.typography.labelLarge)}
+                        val addFolderEnabled = !busy && folderStoreReady
+                        val addFolderShape = CircleShape
+                        Surface(
+                            onClick = triggerAddFolder,
+                            enabled = addFolderEnabled,
+                            shape = addFolderShape,
+                            color = if (addFolderEnabled) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                            contentColor = if (addFolderEnabled) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            modifier = Modifier
+                                .height(40.dp)
+                                .clip(addFolderShape)
+                                .let { if (addFolderEnabled) it.pointerHoverIcon(PointerIcon.Hand) else it }
+                                .semantics { role = Role.Button }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(start = 14.dp, end = 18.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Glyph("folder", LocalContentColor.current, Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Add folder", style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
                     }
                     if(restoring) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())

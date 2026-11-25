@@ -665,6 +665,7 @@ private fun ThemeCard(
 ) {
     val shape = RoundedCornerShape(16.dp)
     Surface(
+        onClick = onSelect,
         shape = shape,
         border = BorderStroke(
             width = if (isSelected) 2.dp else 1.dp,
@@ -672,7 +673,7 @@ private fun ThemeCard(
         ),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isSelected) 0.7f else 0.35f),
         contentColor = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier.clip(shape).clickable { onSelect() }
+        modifier = modifier
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
