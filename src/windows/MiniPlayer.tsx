@@ -3,19 +3,18 @@ import { api } from "../api/tauri";
 import { Artwork } from "../components/Artwork";
 import { Icon } from "../components/Icon";
 import { usePlayerStore } from "../store/usePlayerStore";
-import { useSettingsStore } from "../store/useSettingsStore";
 import { ThemeProvider } from "../theme/ThemeProvider";
-import { formatDuration } from "../utils/format";
+import { useSettingsStore } from "../store/useSettingsStore";
 
 export function MiniPlayer() {
   const initPlayer = usePlayerStore((s) => s.init);
   const initSettings = useSettingsStore((s) => s.init);
 
   const playback = usePlayerStore((s) => s.playback);
+  const queue = usePlayerStore((s) => s.queue);
   const togglePlayPause = usePlayerStore((s) => s.togglePlayPause);
   const nextTrack = usePlayerStore((s) => s.nextTrack);
   const prevTrack = usePlayerStore((s) => s.prevTrack);
-  const seek = usePlayerStore((s) => s.seek);
 
   useEffect(() => {
     void initSettings();
@@ -30,118 +29,87 @@ export function MiniPlayer() {
 
   const track = playback.currentTrack;
   const isPlaying = playback.status === "playing";
-  const duration = playback.durationMs || track?.durationMs || 0;
-  const progressPct =
-    duration > 0 ? Math.min(100, (playback.positionMs / duration) * 100) : 0;
+  const hasPrev = queue.items.length > 0;
+  const hasNext = queue.items.length > 0;
 
   return (
     <ThemeProvider>
-      <div
-        className="h-screen w-screen p-3 flex flex-col justify-between rounded-2xl overflow-hidden adaptive-transition"
-        style={{
-          background:
-            "linear-gradient(145deg, var(--accent-container), var(--surface-1) 62%)",
-          border: "1px solid var(--outline-strong)",
-        }}
-      >
-        {/* Draggable Top Row */}
+      <div className="h-screen w-screen p-1.5 flex items-center justify-center bg-transparent">
         <div
-          data-tauri-drag-region
-          className="flex items-center justify-between gap-3"
+          className="w-full h-full px-3 rounded-full flex items-center gap-2.5 overflow-hidden shadow-lg adaptive-transition"
+          style={{
+            backgroundColor: "var(--surface-2)",
+            border: "1px solid var(--outline-strong)",
+          }}
         >
-          <div data-tauri-drag-region className="flex items-center gap-3 min-w-0 flex-1">
+          {/* Draggable Track Info */}
+          <div
+            data-tauri-drag-region
+            className="flex-1 min-w-0 flex items-center gap-2.5 cursor-grab active:cursor-grabbing"
+          >
             <Artwork
               artworkPath={track?.artworkPath}
               accentColor={track?.accentColor}
               alt={track?.title ?? "Mini Player"}
-              size="md"
+              size="sm"
               rounded="rounded-xl"
             />
-            <div data-tauri-drag-region className="min-w-0">
-              <div className="text-sm font-semibold truncate">
+            <div data-tauri-drag-region className="min-w-0 flex-1">
+              <div className="text-sm font-semibold truncate leading-tight">
                 {track?.title ?? "Nothing playing"}
               </div>
               <div
-                className="text-xs truncate"
+                className="text-[11px] truncate leading-tight mt-0.5"
                 style={{ color: "var(--text-secondary)" }}
               >
-                {track?.artist ?? "Umimuko Music"}
+                {track?.artist ?? ""}
               </div>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => void api.toggleMiniPlayer(false)}
-            className="p-1.5 rounded-full shrink-0 cursor-pointer"
-            style={{
-              backgroundColor: "var(--surface-3)",
-              color: "var(--text-secondary)",
-            }}
-            title="Close Mini Player"
-          >
-            <Icon name="close" size={15} />
-          </button>
-        </div>
-
-        {/* Bottom Controls + Progress */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <span
-              className="text-[10px] tabular-nums w-8 text-right"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {formatDuration(playback.positionMs)}
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={Math.max(1, duration)}
-              value={Math.min(playback.positionMs, duration)}
-              onChange={(e) => void seek(Number(e.target.value))}
-              className="umimuko-slider flex-1"
-              style={{
-                background: `linear-gradient(90deg, var(--accent) ${progressPct}%, var(--surface-4) ${progressPct}%)`,
-                height: 3,
-                borderRadius: 999,
-              }}
-            />
-            <span
-              className="text-[10px] tabular-nums w-8"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {formatDuration(duration)}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-center gap-4">
+          {/* Transport + Restore */}
+          <div className="flex items-center gap-0.5 shrink-0">
             <button
               type="button"
+              disabled={!hasPrev}
               onClick={() => void prevTrack()}
-              className="p-1.5 rounded-full cursor-pointer"
-              title="Previous"
+              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
+              title="Previous track"
             >
               <Icon name="previous" size={20} />
             </button>
+
             <button
               type="button"
+              disabled={!track}
               onClick={() => void togglePlayPause()}
-              className="w-9 h-9 rounded-full flex items-center justify-center shadow cursor-pointer"
+              className="w-10 h-10 rounded-full flex items-center justify-center shadow-sm disabled:opacity-40 cursor-pointer"
               style={{
                 backgroundColor: "var(--accent)",
                 color: "var(--on-accent)",
               }}
               title={isPlaying ? "Pause" : "Play"}
             >
-              <Icon name={isPlaying ? "pause" : "play"} size={20} />
+              <Icon name={isPlaying ? "pause" : "play"} size={22} />
             </button>
+
             <button
               type="button"
+              disabled={!hasNext}
               onClick={() => void nextTrack()}
-              className="p-1.5 rounded-full cursor-pointer"
-              title="Next"
+              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
+              title="Next track"
             >
               <Icon name="next" size={20} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void api.toggleMiniPlayer(false)}
+              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
+              title="Restore player bar"
+            >
+              <Icon name="restore" size={20} />
             </button>
           </div>
         </div>

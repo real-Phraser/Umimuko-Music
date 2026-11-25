@@ -40,18 +40,35 @@ export function DuplicatesDialog() {
 
   return (
     <DialogShell
-      title="Duplicate Detector"
-      subtitle="Finds exact file matches and metadata + duration duplicates"
+      title="Duplicate Track Detection"
+      subtitle="Multi-tier scan: exact binary hash, duration heuristics, and normalized metadata"
+      maxWidth="max-w-[780px]"
       onClose={() => openDialog(null)}
+      headerRight={
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void loadDuplicates()}
+          className="px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer disabled:opacity-50"
+          style={{
+            backgroundColor: "var(--accent)",
+            color: "var(--on-accent)",
+          }}
+        >
+          {loading ? "Scanning…" : "Rescan"}
+        </button>
+      }
     >
       {loading ? (
         <div className="py-12 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
-          Scanning for duplicates…
+          Scanning library for duplicate tracks…
         </div>
       ) : groups.length === 0 ? (
         <div className="py-12 text-center space-y-2">
           <Icon name="library" size={32} className="mx-auto opacity-45" />
-          <div className="text-sm font-medium">No duplicates found</div>
+          <div className="text-sm font-semibold" style={{ color: "var(--accent)" }}>
+            No duplicates found!
+          </div>
           <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
             Your library is clean.
           </div>
@@ -72,7 +89,7 @@ export function DuplicatesDialog() {
                   {group.tracks[0]?.title} — {group.tracks[0]?.artist}
                 </span>
                 <span
-                  className="px-2.5 py-0.5 rounded-full"
+                  className="px-2.5 py-0.5 rounded-full font-medium"
                   style={{
                     backgroundColor: "var(--accent-container)",
                     color: "var(--on-accent-container)",
