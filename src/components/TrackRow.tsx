@@ -96,7 +96,7 @@ export function TrackRow({ track, queueIds, showAlbum = true }: TrackRowProps) {
           }}
           title={track.liked ? "Unlike" : "Like"}
         >
-          <Icon name={track.liked ? "liked" : "heart"} size={18} />
+          <Icon name={track.liked ? "heart" : "liked"} size={18} />
         </button>
 
         <div className="relative">

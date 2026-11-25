@@ -2,15 +2,26 @@ import type { CSSProperties } from "react";
 
 const iconModules = import.meta.glob("../assets/icons/material-rounded/*.svg", {
   eager: true,
-  query: "?url",
+  query: "?raw",
   import: "default",
 }) as Record<string, string>;
 
-const ICON_MAP: Record<string, string> = {};
-for (const [path, url] of Object.entries(iconModules)) {
+interface ParsedIcon {
+  viewBox: string;
+  body: string;
+}
+
+const ICON_MAP: Record<string, ParsedIcon> = {};
+for (const [path, raw] of Object.entries(iconModules)) {
   const filename = path.split("/").pop()?.replace(/\.svg$/, "");
-  if (filename) {
-    ICON_MAP[filename] = url;
+  if (!filename) continue;
+  const viewBoxMatch = raw.match(/viewBox="([^"]+)"/);
+  const bodyMatch = raw.match(/<svg[^>]*>([\s\S]*?)<\/svg>/i);
+  if (bodyMatch) {
+    ICON_MAP[filename] = {
+      viewBox: viewBoxMatch?.[1] ?? "0 -960 960 960",
+      body: bodyMatch[1],
+    };
   }
 }
 
@@ -65,27 +76,19 @@ interface IconProps {
 }
 
 export function Icon({ name, size = 20, className = "", style }: IconProps) {
-  const url = ICON_MAP[name];
-  if (!url) return null;
+  const icon = ICON_MAP[name];
+  if (!icon) return null;
 
   return (
-    <span
+    <svg
       aria-hidden="true"
+      viewBox={icon.viewBox}
+      width={size}
+      height={size}
+      fill="currentColor"
       className={`inline-block shrink-0 select-none ${className}`}
-      style={{
-        width: size,
-        height: size,
-        backgroundColor: "currentColor",
-        maskImage: `url(${url})`,
-        WebkitMaskImage: `url(${url})`,
-        maskRepeat: "no-repeat",
-        WebkitMaskRepeat: "no-repeat",
-        maskPosition: "center",
-        WebkitMaskPosition: "center",
-        maskSize: "contain",
-        WebkitMaskSize: "contain",
-        ...style,
-      }}
+      style={style}
+      dangerouslySetInnerHTML={{ __html: icon.body }}
     />
   );
 }

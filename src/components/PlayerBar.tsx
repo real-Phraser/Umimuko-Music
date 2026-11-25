@@ -181,7 +181,7 @@ export function PlayerBar() {
           }}
           title={track?.liked ? "Unlike current track" : "Like current track"}
         >
-          <Icon name={track?.liked ? "liked" : "heart"} size={18} />
+          <Icon name={track?.liked ? "heart" : "liked"} size={18} />
         </button>
 
         <div className="relative">

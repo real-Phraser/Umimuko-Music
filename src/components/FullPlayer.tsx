@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { resolveArtworkUrl } from "../api/tauri";
-import appIconUrl from "../assets/branding/window-icon.png";
+import appIconUrl from "../assets/branding/app-icon.png";
 import { useLibraryStore } from "../store/useLibraryStore";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { formatDuration } from "../utils/format";

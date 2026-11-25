@@ -124,24 +124,15 @@ function MainWindow() {
         style={{ backgroundColor: "var(--surface-0)", color: "var(--text-primary)" }}
       >
         {/* Top Header Bar across full width (v0.26.1 Main.kt) */}
-        <header className="h-14 shrink-0 px-6 flex items-center justify-between select-none">
+        <header className="h-16 shrink-0 px-7 flex items-center justify-between select-none">
           <div className="flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="w-7 h-7 inline-block shrink-0"
-              style={{
-                backgroundColor: "var(--text-primary)",
-                maskImage: `url(${appIconUrl})`,
-                WebkitMaskImage: `url(${appIconUrl})`,
-                maskRepeat: "no-repeat",
-                WebkitMaskRepeat: "no-repeat",
-                maskPosition: "center",
-                WebkitMaskPosition: "center",
-                maskSize: "contain",
-                WebkitMaskSize: "contain",
-              }}
+            <img
+              src={appIconUrl}
+              alt="Umimuko Music"
+              className="w-10 h-10 object-contain shrink-0 app-brand-icon"
+              draggable={false}
             />
-            <span className="text-lg font-medium tracking-tight">
+            <span className="text-[21px] font-medium tracking-tight">
               Umimuko Music
             </span>
           </div>
@@ -157,7 +148,7 @@ function MainWindow() {
               color: "var(--text-primary)",
             }}
           >
-            <Icon name="settings" size={20} />
+            <Icon name="settings" size={22} />
           </button>
         </header>
 

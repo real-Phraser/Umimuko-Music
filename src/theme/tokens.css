@@ -102,6 +102,17 @@ body,
   user-select: none;
 }
 
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+:root[data-theme="light"] .app-brand-icon {
+  filter: brightness(0) opacity(0.88);
+}
+
 /* Smooth album-adaptive accent & tonal surface transitions */
 body,
 .adaptive-transition {
