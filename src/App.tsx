@@ -8,6 +8,7 @@ import { LibraryView } from "./components/LibraryView";
 import { PlayerBar } from "./components/PlayerBar";
 import { QueueDrawer } from "./components/QueueDrawer";
 import { Sidebar, SIDEBAR_NAV_ITEMS, type NavItem } from "./components/Sidebar";
+import { StartupIntro, getStartupIntroEnabled } from "./components/StartupIntro";
 import { DuplicatesDialog } from "./components/dialogs/DuplicatesDialog";
 import { EqualizerDialog } from "./components/dialogs/EqualizerDialog";
 import { SettingsDialog } from "./components/dialogs/SettingsDialog";
@@ -55,6 +56,8 @@ function MainWindow() {
   const setVolume = usePlayerStore((s) => s.setVolume);
   const setFullPlayerOpen = usePlayerStore((s) => s.setFullPlayerOpen);
   const setQueueDrawerOpen = usePlayerStore((s) => s.setQueueDrawerOpen);
+
+  const [showIntro, setShowIntro] = useState(() => getStartupIntroEnabled());
 
   // Track navigation history matching LibraryPanel.kt's history stack
   const [history, setHistory] = useState<NavSnapshot[]>([]);
@@ -294,6 +297,8 @@ function MainWindow() {
         <StatsDialog />
         <SleepTimerDialog />
         <SettingsDialog />
+
+        {showIntro && <StartupIntro onFinished={() => setShowIntro(false)} />}
       </div>
     </ThemeProvider>
   );

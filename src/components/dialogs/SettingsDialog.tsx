@@ -13,6 +13,7 @@ import {
 } from "../../theme/ThemeProvider";
 import type { KeybindingsConfig, ListeningStats } from "../../types/ipc";
 import { Icon, type IconName } from "../Icon";
+import { getStartupIntroEnabled, setStartupIntroEnabled } from "../StartupIntro";
 import { getShowRomanizedPref, setShowRomanizedPref } from "../lyrics/SpicyLyricsView";
 
 type SettingsTabId =
@@ -148,6 +149,7 @@ export function SettingsDialog() {
     }
   });
   const [selectedPresetId, setSelectedPresetId] = useState<string>(getStoredThemePresetId);
+  const [introEnabled, setIntroEnabled] = useState<boolean>(getStartupIntroEnabled);
   const [recordingKey, setRecordingKey] = useState<keyof KeybindingsConfig | null>(null);
   const [keyConflictMsg, setKeyConflictMsg] = useState<string | null>(null);
   const [stats, setStats] = useState<ListeningStats | null>(null);
@@ -799,6 +801,23 @@ export function SettingsDialog() {
                       void setAdaptiveAccent(enabled);
                     }}
                     label="Dynamic Album Colors"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-medium">Startup Intro Animation</div>
+                    <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                      Fluid greeting animation when the app launches
+                    </div>
+                  </div>
+                  <M3Switch
+                    checked={introEnabled}
+                    onChange={(enabled) => {
+                      setIntroEnabled(enabled);
+                      setStartupIntroEnabled(enabled);
+                    }}
+                    label="Startup Intro Animation"
                   />
                 </div>
 
