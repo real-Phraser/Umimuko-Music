@@ -133,6 +133,29 @@ export interface DuplicateGroup {
   tracks: Track[];
 }
 
+export type ShortcutAction =
+  | "play_pause"
+  | "next_track"
+  | "prev_track"
+  | "seek_forward"
+  | "seek_backward"
+  | "volume_up"
+  | "volume_down"
+  | "mute"
+  | "toggle_fullscreen"
+  | "toggle_full_player"
+  | "toggle_lyrics";
+
+export interface KeyCombination {
+  code: string;
+  ctrl?: boolean;
+  meta?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+}
+
+export type ShortcutBindings = Record<ShortcutAction, KeyCombination | null>;
+
 export interface KeybindingsConfig {
   playPause: string;
   nextTrack: string;

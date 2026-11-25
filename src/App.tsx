@@ -1,6 +1,7 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import appIconUrl from "./assets/branding/app-icon.png";
-import { getWindowLabel } from "./api/tauri";
+import { getWindowLabel, isTauriRuntime } from "./api/tauri";
 import { FullPlayer } from "./components/FullPlayer";
 import { HomeScreen } from "./components/HomeScreen";
 import { Icon } from "./components/Icon";
@@ -21,8 +22,13 @@ import {
   type NavSection,
 } from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
-import { useSettingsStore } from "./store/useSettingsStore";
+import {
+  SHORTCUT_ACTIONS,
+  matchesKeyCombination,
+  useSettingsStore,
+} from "./store/useSettingsStore";
 import { ThemeProvider } from "./theme/ThemeProvider";
+import type { ShortcutAction } from "./types/ipc";
 import { MiniPlayer } from "./windows/MiniPlayer";
 
 interface NavSnapshot {
@@ -48,14 +54,15 @@ function MainWindow() {
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
   const openDialog = useLibraryStore((s) => s.openDialog);
 
-  const keybindings = useSettingsStore((s) => s.settings.keybindings);
+  const shortcutBindings = useSettingsStore((s) => s.shortcutBindings);
   const togglePlayPause = usePlayerStore((s) => s.togglePlayPause);
   const nextTrack = usePlayerStore((s) => s.nextTrack);
   const prevTrack = usePlayerStore((s) => s.prevTrack);
+  const seek = usePlayerStore((s) => s.seek);
   const toggleMute = usePlayerStore((s) => s.toggleMute);
   const setVolume = usePlayerStore((s) => s.setVolume);
   const setFullPlayerOpen = usePlayerStore((s) => s.setFullPlayerOpen);
-  const setQueueDrawerOpen = usePlayerStore((s) => s.setQueueDrawerOpen);
+  const setFullPlayerTab = usePlayerStore((s) => s.setFullPlayerTab);
 
   const [showIntro, setShowIntro] = useState(() => getStartupIntroEnabled());
 
@@ -148,6 +155,68 @@ function MainWindow() {
 
   // Global keyboard shortcuts (ignored when typing in inputs)
   useEffect(() => {
+    const executeShortcutAction = (action: ShortcutAction) => {
+      const playback = usePlayerStore.getState().playback;
+      switch (action) {
+        case "play_pause":
+          void togglePlayPause();
+          break;
+        case "next_track":
+          void nextTrack();
+          break;
+        case "prev_track":
+          void prevTrack();
+          break;
+        case "seek_forward":
+          if (playback.durationMs > 0) {
+            void seek(Math.min(playback.durationMs, playback.positionMs + 5000));
+          }
+          break;
+        case "seek_backward":
+          if (playback.durationMs > 0) {
+            void seek(Math.max(0, playback.positionMs - 5000));
+          }
+          break;
+        case "volume_up":
+          void setVolume(Math.min(1, playback.volume + 0.05));
+          break;
+        case "volume_down":
+          void setVolume(Math.max(0, playback.volume - 0.05));
+          break;
+        case "mute":
+          void toggleMute();
+          break;
+        case "toggle_fullscreen":
+          if (isTauriRuntime()) {
+            const win = getCurrentWindow();
+            void win
+              .isFullscreen()
+              .then((fs) => win.setFullscreen(!fs))
+              .catch(() => {});
+          } else if (document.fullscreenElement) {
+            void document.exitFullscreen().catch(() => {});
+          } else {
+            void document.documentElement.requestFullscreen?.().catch(() => {});
+          }
+          break;
+        case "toggle_full_player": {
+          const open = usePlayerStore.getState().fullPlayerOpen;
+          setFullPlayerOpen(!open);
+          break;
+        }
+        case "toggle_lyrics": {
+          const { fullPlayerOpen, fullPlayerTab } = usePlayerStore.getState();
+          if (!fullPlayerOpen) {
+            setFullPlayerTab("lyrics");
+            setFullPlayerOpen(true);
+          } else {
+            setFullPlayerTab(fullPlayerTab === "lyrics" ? "artwork" : "lyrics");
+          }
+          break;
+        }
+      }
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (
@@ -160,52 +229,28 @@ function MainWindow() {
         return;
       }
 
-      if (e.code === keybindings.playPause) {
-        e.preventDefault();
-        void togglePlayPause();
-      } else if (e.code === keybindings.nextTrack) {
-        e.preventDefault();
-        void nextTrack();
-      } else if (e.code === keybindings.prevTrack) {
-        e.preventDefault();
-        void prevTrack();
-      } else if (e.code === keybindings.toggleMute) {
-        e.preventDefault();
-        void toggleMute();
-      } else if (e.code === keybindings.volumeUp) {
-        e.preventDefault();
-        const cur = usePlayerStore.getState().playback.volume;
-        void setVolume(Math.min(1, cur + 0.05));
-      } else if (e.code === keybindings.volumeDown) {
-        e.preventDefault();
-        const cur = usePlayerStore.getState().playback.volume;
-        void setVolume(Math.max(0, cur - 0.05));
-      } else if (e.code === keybindings.toggleLyrics) {
-        e.preventDefault();
-        const open = usePlayerStore.getState().fullPlayerOpen;
-        setFullPlayerOpen(!open);
-      } else if (e.code === keybindings.toggleQueue) {
-        e.preventDefault();
-        const open = usePlayerStore.getState().queueDrawerOpen;
-        setQueueDrawerOpen(!open);
-      } else if (e.code === keybindings.focusSearch) {
-        e.preventDefault();
-        setActiveNav("search");
+      for (const action of SHORTCUT_ACTIONS) {
+        const combo = shortcutBindings[action];
+        if (combo && matchesKeyCombination(e, combo)) {
+          e.preventDefault();
+          executeShortcutAction(action);
+          return;
+        }
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
-    keybindings,
+    shortcutBindings,
     togglePlayPause,
     nextTrack,
     prevTrack,
+    seek,
     toggleMute,
     setVolume,
     setFullPlayerOpen,
-    setQueueDrawerOpen,
-    setActiveNav,
+    setFullPlayerTab,
   ]);
 
   return (
