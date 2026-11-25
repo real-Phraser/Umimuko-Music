@@ -239,7 +239,10 @@ impl AudioEngine {
     }
 
     pub fn snapshot(&self) -> EngineSnapshot {
-        self.snapshot.lock().unwrap().clone()
+        self.snapshot
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn play(&self) {
@@ -346,33 +349,20 @@ impl Drop for AudioEngine {
     }
 }
 
-fn run_cpal_host(
+fn build_typed_output_stream<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
     shared: Arc<SharedAudioState>,
     mut cons_a: HeapCons<f32>,
     mut cons_b: HeapCons<f32>,
-    fmt_tx: mpsc::Sender<Result<(u32, usize), EngineError>>,
-) {
-    let host = cpal::default_host();
-    let Some(device) = host.default_output_device() else {
-        let _ = fmt_tx.send(Err(EngineError::NoOutputDevice));
-        return;
-    };
-
-    let supported_config = match device.default_output_config() {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            let _ = fmt_tx.send(Err(EngineError::Device(e.to_string())));
-            return;
-        }
-    };
-
-    let sample_rate = supported_config.sample_rate().0;
-    let channels = supported_config.channels() as usize;
-    let config: cpal::StreamConfig = supported_config.into();
-
-    let stream = device.build_output_stream(
-        &config,
-        move |output: &mut [f32], _: &cpal::OutputCallbackInfo| {
+    channels: usize,
+) -> Result<cpal::Stream, cpal::BuildStreamError>
+where
+    T: cpal::SizedSample + cpal::FromSample<f32>,
+{
+    device.build_output_stream(
+        config,
+        move |output: &mut [T], _: &cpal::OutputCallbackInfo| {
             if shared.flush_a.swap(false, Ordering::AcqRel) {
                 cons_a.clear();
                 shared.played_frames_a.store(0, Ordering::Relaxed);
@@ -383,7 +373,7 @@ fn run_cpal_host(
             }
 
             if !shared.playing.load(Ordering::Acquire) {
-                output.fill(0.0);
+                output.fill(T::EQUILIBRIUM);
                 return;
             }
 
@@ -438,7 +428,7 @@ fn run_cpal_host(
                     } else {
                         a
                     };
-                    *sample_out = (mixed * gain).clamp(-1.0, 1.0);
+                    *sample_out = T::from_sample((mixed * gain).clamp(-1.0, 1.0));
                 }
                 if got_a {
                     frames_a += 1;
@@ -459,9 +449,59 @@ fn run_cpal_host(
             tracing::error!("cpal output stream error: {err}");
         },
         None,
-    );
+    )
+}
 
-    let stream = match stream {
+fn run_cpal_host(
+    shared: Arc<SharedAudioState>,
+    cons_a: HeapCons<f32>,
+    cons_b: HeapCons<f32>,
+    fmt_tx: mpsc::Sender<Result<(u32, usize), EngineError>>,
+) {
+    let host = cpal::default_host();
+    let Some(device) = host.default_output_device() else {
+        let _ = fmt_tx.send(Err(EngineError::NoOutputDevice));
+        return;
+    };
+
+    let supported_config = match device.default_output_config() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            let _ = fmt_tx.send(Err(EngineError::Device(e.to_string())));
+            return;
+        }
+    };
+
+    let sample_rate = supported_config.sample_rate().0.max(1);
+    let channels = (supported_config.channels() as usize).max(1);
+    let sample_format = supported_config.sample_format();
+    let config: cpal::StreamConfig = supported_config.into();
+
+    let stream_res = match sample_format {
+        cpal::SampleFormat::F32 => {
+            build_typed_output_stream::<f32>(&device, &config, shared, cons_a, cons_b, channels)
+        }
+        cpal::SampleFormat::I16 => {
+            build_typed_output_stream::<i16>(&device, &config, shared, cons_a, cons_b, channels)
+        }
+        cpal::SampleFormat::U16 => {
+            build_typed_output_stream::<u16>(&device, &config, shared, cons_a, cons_b, channels)
+        }
+        cpal::SampleFormat::I32 => {
+            build_typed_output_stream::<i32>(&device, &config, shared, cons_a, cons_b, channels)
+        }
+        cpal::SampleFormat::F64 => {
+            build_typed_output_stream::<f64>(&device, &config, shared, cons_a, cons_b, channels)
+        }
+        other => {
+            let _ = fmt_tx.send(Err(EngineError::Device(format!(
+                "unsupported output sample format: {other:?}"
+            ))));
+            return;
+        }
+    };
+
+    let stream = match stream_res {
         Ok(s) => s,
         Err(e) => {
             let _ = fmt_tx.send(Err(EngineError::Device(e.to_string())));
@@ -522,9 +562,15 @@ impl ActiveStream {
 
     /// Decode and resample into `device_sr`/`device_ch` at `playback_rate`, applying EQ.
     fn fill_producer(&mut self, prod: &mut HeapProd<f32>, device_sr: u32, device_ch: usize, playback_rate: f32) {
+        let device_sr = device_sr.max(1);
+        let device_ch = device_ch.max(1);
         let free = prod.vacant_len();
         if free < device_ch * 256 {
             return;
+        }
+
+        if !self.resample_cursor.is_finite() || self.resample_cursor < 0.0 {
+            self.resample_cursor = 0.0;
         }
 
         let src_sr = self.decoder.sample_rate().max(1);
@@ -626,7 +672,7 @@ fn run_decoder_worker(
                       xfade_curve: CrossfadeCurve| {
         let track = queue.current_track().cloned();
         {
-            let mut snap = snapshot.lock().unwrap();
+            let mut snap = snapshot.lock().unwrap_or_else(|e| e.into_inner());
             snap.status = status;
             snap.current_track = track.clone();
             snap.current_index = queue.current_index();
@@ -1003,7 +1049,7 @@ fn run_decoder_worker(
                 let (pos, dur) = current_pos_dur(&primary, &shared, device_sr, playback_rate);
                 let track_id = primary.as_ref().map(|p| p.track_id.clone());
                 {
-                    let mut snap = snapshot.lock().unwrap();
+                    let mut snap = snapshot.lock().unwrap_or_else(|e| e.into_inner());
                     snap.position_ms = pos;
                     snap.duration_ms = dur;
                 }
@@ -1080,5 +1126,115 @@ fn current_pos_dur(
     match primary {
         Some(p) => current_pos_dur_ref(p, shared, device_sr, playback_rate),
         None => (0, 0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::PathBuf;
+
+    fn write_test_wav(path: &PathBuf, sample_rate: u32, channels: u16, duration_ms: u64) {
+        let num_frames = (sample_rate as u64 * duration_ms / 1000) as u32;
+        let bits_per_sample: u16 = 16;
+        let byte_rate = sample_rate * u32::from(channels) * u32::from(bits_per_sample / 8);
+        let block_align = channels * (bits_per_sample / 8);
+        let data_size = num_frames * u32::from(block_align);
+        let riff_size = 36 + data_size;
+
+        let mut file = File::create(path).expect("create temp wav");
+        file.write_all(b"RIFF").unwrap();
+        file.write_all(&riff_size.to_le_bytes()).unwrap();
+        file.write_all(b"WAVE").unwrap();
+        file.write_all(b"fmt ").unwrap();
+        file.write_all(&16u32.to_le_bytes()).unwrap();
+        file.write_all(&1u16.to_le_bytes()).unwrap(); // PCM
+        file.write_all(&channels.to_le_bytes()).unwrap();
+        file.write_all(&sample_rate.to_le_bytes()).unwrap();
+        file.write_all(&byte_rate.to_le_bytes()).unwrap();
+        file.write_all(&block_align.to_le_bytes()).unwrap();
+        file.write_all(&bits_per_sample.to_le_bytes()).unwrap();
+        file.write_all(b"data").unwrap();
+        file.write_all(&data_size.to_le_bytes()).unwrap();
+
+        for frame in 0..num_frames {
+            let t = frame as f32 / sample_rate as f32;
+            let sample = (t * 440.0 * std::f32::consts::TAU).sin() * 0.25;
+            let pcm = (sample * i16::MAX as f32) as i16;
+            for _ in 0..channels {
+                file.write_all(&pcm.to_le_bytes()).unwrap();
+            }
+        }
+        file.flush().unwrap();
+    }
+
+    #[test]
+    fn test_wav_decode_seek_and_audio_engine_lifecycle() {
+        let wav_path = std::env::temp_dir().join(format!(
+            "umimuko_engine_test_{}.wav",
+            std::process::id()
+        ));
+        write_test_wav(&wav_path, 44100, 2, 500);
+
+        // Always exercise AudioDecoder on the generated WAV
+        let mut dec = AudioDecoder::open(&wav_path).expect("open wav");
+        assert_eq!(dec.sample_rate(), 44100);
+        assert_eq!(dec.channels(), 2);
+        assert!(dec.duration_ms() >= 450);
+
+        let mut samples = Vec::new();
+        let count = dec.next_interleaved_samples(&mut samples).expect("decode wav");
+        assert!(count > 0);
+        let seeked_ms = dec.seek_ms(200).expect("seek wav");
+        assert!(seeked_ms <= 500);
+
+        // Exercise AudioEngine load/play/seek/pause/stop without panicking.
+        // In headless CI without an output device, AudioEngine::new returns Err(NoOutputDevice/Device).
+        let events = Arc::new(Mutex::new(Vec::<AudioEvent>::new()));
+        let events_cb = Arc::clone(&events);
+        match AudioEngine::new(Arc::new(move |ev| {
+            if let Ok(mut guard) = events_cb.lock() {
+                guard.push(ev);
+            }
+        })) {
+            Ok(engine) => {
+                let track = TrackRef {
+                    id: "test-wav-1".to_string(),
+                    path: wav_path.to_string_lossy().to_string(),
+                    title: "Test Tone".to_string(),
+                    artist: "Umimuko".to_string(),
+                    album: "Tests".to_string(),
+                    duration_ms: 500,
+                    artwork_path: None,
+                };
+                engine.set_queue(vec![track], Some(0), true);
+                thread::sleep(Duration::from_millis(80));
+                let snap_playing = engine.snapshot();
+                assert_eq!(snap_playing.status, PlaybackStatus::Playing);
+
+                engine.seek_ms(150);
+                thread::sleep(Duration::from_millis(40));
+
+                engine.pause();
+                thread::sleep(Duration::from_millis(40));
+                assert_eq!(engine.snapshot().status, PlaybackStatus::Paused);
+
+                engine.play();
+                thread::sleep(Duration::from_millis(40));
+                assert_eq!(engine.snapshot().status, PlaybackStatus::Playing);
+
+                engine.stop();
+                thread::sleep(Duration::from_millis(40));
+                assert_eq!(engine.snapshot().status, PlaybackStatus::Stopped);
+            }
+            Err(EngineError::NoOutputDevice | EngineError::Device(_)) => {
+                // No audio output device available in this environment; decoder test still passed.
+            }
+            Err(other) => panic!("unexpected AudioEngine::new error: {other}"),
+        }
+
+        let _ = std::fs::remove_file(&wav_path);
     }
 }

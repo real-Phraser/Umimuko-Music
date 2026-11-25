@@ -4,6 +4,7 @@ use souvlaki::{
     SeekDirection,
 };
 use std::ffi::c_void;
+use std::path::Path;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -44,6 +45,13 @@ impl MediaSession {
     where
         F: Fn(MediaSessionEvent) + Send + Sync + 'static,
     {
+        #[cfg(target_os = "windows")]
+        if hwnd.is_none() {
+            return Err(MediaSessionError::Init(
+                "Windows media controls require a valid HWND".to_string(),
+            ));
+        }
+
         let config = PlatformConfig {
             dbus_name,
             display_name,
@@ -95,12 +103,13 @@ impl MediaSession {
         duration_ms: Option<u64>,
         cover_url: Option<&str>,
     ) -> Result<(), MediaSessionError> {
+        let normalized_cover = normalize_cover_url(cover_url);
         let metadata = MediaMetadata {
             title,
             artist,
             album,
             duration: duration_ms.map(Duration::from_millis),
-            cover_url,
+            cover_url: normalized_cover.as_deref(),
         };
         self.controls
             .set_metadata(metadata)
@@ -130,4 +139,43 @@ impl MediaSession {
             .detach()
             .map_err(|e| MediaSessionError::Update(format!("{e:?}")))
     }
+}
+
+/// Convert a local filesystem path or URL string into a valid, percent-encoded
+/// `file://` or `http(s)://` URL for `souvlaki`. Returns `None` for empty strings
+/// or non-existent local files so `NSImage` / SMTC never receives an invalid URL.
+fn normalize_cover_url(raw: Option<&str>) -> Option<String> {
+    let s = raw?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    if s.starts_with("http://") || s.starts_with("https://") || s.starts_with("file://") {
+        return Some(s.to_string());
+    }
+
+    let path = Path::new(s);
+    if !path.is_file() {
+        return None;
+    }
+
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let path_str = canonical.to_string_lossy();
+    let normalized = path_str.replace('\\', "/");
+
+    let mut out = String::from("file://");
+    if !normalized.starts_with('/') {
+        out.push('/');
+    }
+    for byte in normalized.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' | b':' => {
+                out.push(*byte as char);
+            }
+            b => {
+                use std::fmt::Write;
+                let _ = write!(out, "%{b:02X}");
+            }
+        }
+    }
+    Some(out)
 }

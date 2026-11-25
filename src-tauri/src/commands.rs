@@ -384,7 +384,7 @@ impl AppState {
 
     pub fn current_playback_state(&self) -> PlaybackStateDto {
         let sleep_ms = self.sleep_timer_remaining_ms();
-        let db = self.db.lock().unwrap();
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(ref engine) = self.engine {
             let snap = engine.snapshot();
             snapshot_to_playback_dto(&db, &snap, sleep_ms)
@@ -405,8 +405,8 @@ impl AppState {
     }
 
     pub fn current_queue_snapshot(&self) -> QueueSnapshotDto {
-        let qc = self.queue_cache.lock().unwrap();
-        let db = self.db.lock().unwrap();
+        let qc = self.queue_cache.lock().unwrap_or_else(|e| e.into_inner());
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         build_queue_dto(&db, &qc.tracks, qc.current_index, qc.shuffled, qc.repeat_mode)
     }
 }
@@ -853,7 +853,7 @@ fn built_in_eq_presets() -> Vec<EqualizerPresetDto> {
 
 #[tauri::command]
 pub fn get_tracks(state: State<'_, AppState>) -> Result<Vec<TrackDto>, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let records = db.list_tracks().map_err(|e| e.to_string())?;
     Ok(hydrate_tracks(&db, &records))
 }
@@ -865,7 +865,7 @@ pub fn scan_folders(
     folders: Option<Vec<String>>,
 ) -> Result<Vec<TrackDto>, String> {
     let folder_paths: Vec<PathBuf> = {
-        let db = state.db.lock().unwrap();
+        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
         let list = match folders {
             Some(f) if !f.is_empty() => f,
             _ => db
@@ -888,7 +888,7 @@ pub fn scan_folders(
         },
     );
 
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let result = run_folder_scan(&db, &folder_paths, &state.cache_root, |prog| {
         let _ = app.emit(
             "library:progress",
@@ -917,7 +917,7 @@ pub fn scan_folders(
 
 #[tauri::command]
 pub fn add_folder(state: State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     db.add_folder(&path, unix_now_secs())
         .map_err(|e| e.to_string())?;
     let mut settings = load_app_settings(&db);
@@ -930,7 +930,7 @@ pub fn add_folder(state: State<'_, AppState>, path: String) -> Result<Vec<String
 
 #[tauri::command]
 pub fn remove_folder(state: State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     db.remove_folder(&path).map_err(|e| e.to_string())?;
     let mut settings = load_app_settings(&db);
     settings.folders.retain(|f| f != &path);
@@ -946,7 +946,7 @@ pub fn toggle_like_track(
     liked: bool,
 ) -> Result<TrackDto, String> {
     let updated = {
-        let db = state.db.lock().unwrap();
+        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
         db.set_track_liked(&track_id, liked, unix_now_secs())
             .map_err(|e| e.to_string())?;
         let rec = db
@@ -970,7 +970,7 @@ pub fn update_track_tags(
     input: TagUpdateInput,
 ) -> Result<TrackDto, String> {
     let updated = {
-        let db = state.db.lock().unwrap();
+        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
         let mut rec = db
             .get_track_by_id(&input.track_id)
             .map_err(|e| e.to_string())?
@@ -1020,7 +1020,7 @@ pub fn delete_track(
     delete_file: Option<bool>,
 ) -> Result<(), String> {
     let file_path = {
-        let db = state.db.lock().unwrap();
+        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
         let path = db
             .get_track_by_id(&track_id)
             .map_err(|e| e.to_string())?
@@ -1040,7 +1040,7 @@ pub fn delete_track(
 
     if let Some(ref engine) = state.engine {
         let indices: Vec<usize> = {
-            let qc = state.queue_cache.lock().unwrap();
+            let qc = state.queue_cache.lock().unwrap_or_else(|e| e.into_inner());
             qc.tracks
                 .iter()
                 .enumerate()
@@ -1059,7 +1059,7 @@ pub fn delete_track(
 
 #[tauri::command]
 pub fn get_pinned_track_ids(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let raw = db
         .get_setting(SETTINGS_KEY_PINNED)
         .map_err(|e| e.to_string())?;
@@ -1073,7 +1073,7 @@ pub fn toggle_pin_track(
     state: State<'_, AppState>,
     track_id: String,
 ) -> Result<Vec<String>, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let mut pinned: Vec<String> = db
         .get_setting(SETTINGS_KEY_PINNED)
         .map_err(|e| e.to_string())?
@@ -1094,7 +1094,7 @@ pub fn toggle_pin_track(
 
 #[tauri::command]
 pub fn get_playlists(state: State<'_, AppState>) -> Result<Vec<PlaylistDto>, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let pinned_set: HashSet<String> = db
         .get_setting(SETTINGS_KEY_PINNED_PLAYLISTS)
         .ok()
@@ -1116,7 +1116,7 @@ pub fn create_playlist(
     name: String,
     track_ids: Option<Vec<String>>,
 ) -> Result<PlaylistDto, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let now = unix_now_ms();
     let id = format!("pl-{now}");
     let ids = track_ids.unwrap_or_default();
@@ -1142,7 +1142,7 @@ pub fn add_track_to_playlist(
     playlist_id: String,
     track_id: String,
 ) -> Result<PlaylistDto, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let list = db.list_playlists().map_err(|e| e.to_string())?;
     let next_pos = list
         .iter()
@@ -1169,7 +1169,7 @@ pub fn add_track_to_playlist(
 
 #[tauri::command]
 pub fn delete_playlist(state: State<'_, AppState>, playlist_id: String) -> Result<(), String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     db.delete_playlist(&playlist_id).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -1195,7 +1195,7 @@ pub fn play_track(
     };
 
     let (tracks_for_queue, start_index, target_track) = {
-        let db = state.db.lock().unwrap();
+        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
         let target_rec = db
             .get_track_by_id(&track_id)
             .map_err(|e| e.to_string())?
@@ -1212,7 +1212,7 @@ pub fn play_track(
             let idx = refs.iter().position(|t| t.id == track_id).unwrap_or(0);
             (Some(refs), Some(idx), target_ref)
         } else {
-            let qc = state.queue_cache.lock().unwrap();
+            let qc = state.queue_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(existing_idx) = qc.tracks.iter().position(|t| t.id == track_id) {
                 (None, Some(existing_idx), target_ref)
             } else {
@@ -1231,7 +1231,7 @@ pub fn play_track(
     }
 
     let sleep_ms = state.sleep_timer_remaining_ms();
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let mut pb = snapshot_to_playback_dto(&db, &engine.snapshot(), sleep_ms);
     pb.status = PlaybackStatus::Playing;
     pb.current_track_id = Some(target_track.id.clone());
@@ -1316,7 +1316,7 @@ pub fn reorder_queue(
     if let Some(ref engine) = state.engine {
         engine.move_queue_item(from_index, to_index);
     }
-    let mut qc = state.queue_cache.lock().unwrap();
+    let mut qc = state.queue_cache.lock().unwrap_or_else(|e| e.into_inner());
     if from_index < qc.tracks.len() && to_index < qc.tracks.len() && from_index != to_index {
         let current_id = qc
             .current_index
@@ -1326,7 +1326,7 @@ pub fn reorder_queue(
         qc.tracks.insert(to_index, item);
         qc.current_index = current_id.and_then(|id| qc.tracks.iter().position(|t| t.id == id));
     }
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     Ok(build_queue_dto(
         &db,
         &qc.tracks,
@@ -1344,7 +1344,7 @@ pub fn remove_from_queue(
     if let Some(ref engine) = state.engine {
         engine.remove_queue_indices(indices.clone());
     }
-    let mut qc = state.queue_cache.lock().unwrap();
+    let mut qc = state.queue_cache.lock().unwrap_or_else(|e| e.into_inner());
     let remove_set: HashSet<usize> = indices.into_iter().collect();
     let current_id = qc
         .current_index
@@ -1358,7 +1358,7 @@ pub fn remove_from_queue(
     }
     qc.tracks = new_tracks;
     qc.current_index = current_id.and_then(|id| qc.tracks.iter().position(|t| t.id == id));
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     Ok(build_queue_dto(
         &db,
         &qc.tracks,
@@ -1375,7 +1375,7 @@ pub fn enqueue_tracks(
     play_next: Option<bool>,
 ) -> Result<QueueSnapshotDto, String> {
     let refs: Vec<TrackRef> = {
-        let db = state.db.lock().unwrap();
+        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
         track_ids
             .iter()
             .filter_map(|id| db.get_track_by_id(id).ok().flatten())
@@ -1396,7 +1396,7 @@ pub fn enqueue_tracks(
         }
     }
 
-    let mut qc = state.queue_cache.lock().unwrap();
+    let mut qc = state.queue_cache.lock().unwrap_or_else(|e| e.into_inner());
     if play_next {
         let insert_at = qc
             .current_index
@@ -1409,7 +1409,7 @@ pub fn enqueue_tracks(
         qc.tracks.extend(refs);
     }
 
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     Ok(build_queue_dto(
         &db,
         &qc.tracks,
@@ -1426,7 +1426,7 @@ pub fn set_sleep_timer(
     minutes: Option<u64>,
 ) -> Result<(), String> {
     {
-        let mut guard = state.sleep_timer_deadline.lock().unwrap();
+        let mut guard = state.sleep_timer_deadline.lock().unwrap_or_else(|e| e.into_inner());
         *guard = match minutes {
             Some(m) if m > 0 => Some(
                 Instant::now() + std::time::Duration::from_secs(m.saturating_mul(60)),
@@ -1445,7 +1445,7 @@ pub async fn get_lyrics(
     track_id: String,
 ) -> Result<SpicyLyricsDto, String> {
     let query = {
-        let db = state.db.lock().unwrap();
+        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
         let rec = db
             .get_track_by_id(&track_id)
             .map_err(|e| e.to_string())?
@@ -1479,7 +1479,7 @@ pub async fn refresh_lyrics(
     track_id: String,
 ) -> Result<SpicyLyricsDto, String> {
     let query = {
-        let db = state.db.lock().unwrap();
+        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
         let rec = db
             .get_track_by_id(&track_id)
             .map_err(|e| e.to_string())?
@@ -1516,7 +1516,7 @@ pub fn set_equalizer_config(
     if let Some(ref engine) = state.engine {
         apply_eq_to_engine(engine, &config);
     }
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let mut settings = load_app_settings(&db);
     settings.equalizer = config;
     save_app_settings_to_db(&db, &settings)
@@ -1525,7 +1525,7 @@ pub fn set_equalizer_config(
 #[tauri::command]
 pub fn get_eq_presets(state: State<'_, AppState>) -> Result<Vec<EqualizerPresetDto>, String> {
     let mut presets = built_in_eq_presets();
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let custom = db.list_eq_presets().map_err(|e| e.to_string())?;
     for p in custom {
         if !p.is_builtin && !presets.iter().any(|b| b.id == p.id) {
@@ -1554,7 +1554,7 @@ pub fn save_eq_preset(
         bands_db: preset.bands.clone(),
         is_builtin: false,
     };
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     db.upsert_eq_preset(&record).map_err(|e| e.to_string())?;
     Ok(EqualizerPresetDto {
         id,
@@ -1573,7 +1573,7 @@ pub fn set_crossfade_config(
     if let Some(ref engine) = state.engine {
         apply_crossfade_to_engine(engine, &config);
     }
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let mut settings = load_app_settings(&db);
     settings.crossfade = config;
     save_app_settings_to_db(&db, &settings)
@@ -1581,7 +1581,7 @@ pub fn set_crossfade_config(
 
 #[tauri::command]
 pub fn find_duplicates(state: State<'_, AppState>) -> Result<Vec<DuplicateGroupDto>, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let tracks = db.list_tracks().map_err(|e| e.to_string())?;
     let groups = DuplicateDetector::find_duplicates(&tracks, 2000);
     Ok(groups
@@ -1601,7 +1601,7 @@ pub fn find_duplicates(state: State<'_, AppState>) -> Result<Vec<DuplicateGroupD
 
 #[tauri::command]
 pub fn get_listening_stats(state: State<'_, AppState>) -> Result<ListeningStatsDto, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let summary = db.listening_stats(5).map_err(|e| e.to_string())?;
     let all_records = db.list_tracks().map_err(|e| e.to_string())?;
     let hydrated = hydrate_tracks(&db, &all_records);
@@ -1693,7 +1693,7 @@ pub fn get_listening_stats(state: State<'_, AppState>) -> Result<ListeningStatsD
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettingsDto, String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     Ok(load_app_settings(&db))
 }
 
@@ -1706,7 +1706,7 @@ pub fn save_settings(
         apply_eq_to_engine(engine, &settings.equalizer);
         apply_crossfade_to_engine(engine, &settings.crossfade);
     }
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     save_app_settings_to_db(&db, &settings)?;
     Ok(settings)
 }

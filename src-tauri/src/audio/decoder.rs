@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
-use symphonia::core::audio::SampleBuffer;
+use symphonia::core::audio::{SampleBuffer, SignalSpec};
 use symphonia::core::codecs::{Decoder, DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
@@ -40,6 +40,7 @@ pub struct AudioDecoder {
     track_id: u32,
     spec: AudioSpec,
     sample_buf: Option<SampleBuffer<f32>>,
+    sample_buf_spec: Option<SignalSpec>,
     current_frame: u64,
     eof: bool,
 }
@@ -75,7 +76,10 @@ impl AudioDecoder {
 
         let track_id = track.id;
         let params = &track.codec_params;
-        let sample_rate = params.sample_rate.ok_or(DecoderError::MissingParameters)?;
+        let sample_rate = params
+            .sample_rate
+            .filter(|&sr| sr > 0)
+            .ok_or(DecoderError::MissingParameters)?;
         let channels = params
             .channels
             .map(|c| c.count())
@@ -85,9 +89,13 @@ impl AudioDecoder {
         let duration_ms = match (params.n_frames, params.time_base) {
             (Some(n_frames), Some(tb)) => {
                 let time = tb.calc_time(n_frames);
-                time.seconds * 1000 + (time.frac * 1000.0).round() as u64
+                time.seconds
+                    .saturating_mul(1000)
+                    .saturating_add((time.frac * 1000.0).round() as u64)
             }
-            (Some(n_frames), None) => (n_frames * 1000) / u64::from(sample_rate.max(1)),
+            (Some(n_frames), None) => {
+                n_frames.saturating_mul(1000) / u64::from(sample_rate.max(1))
+            }
             _ => 0,
         };
 
@@ -104,6 +112,7 @@ impl AudioDecoder {
                 duration_ms,
             },
             sample_buf: None,
+            sample_buf_spec: None,
             current_frame: 0,
             eof: false,
         })
@@ -165,7 +174,8 @@ impl AudioDecoder {
         } else {
             clamped_ms
         };
-        self.current_frame = (actual_ms * u64::from(self.spec.sample_rate)) / 1000;
+        self.current_frame =
+            actual_ms.saturating_mul(u64::from(self.spec.sample_rate)) / 1000;
         Ok(actual_ms)
     }
 
@@ -200,15 +210,24 @@ impl AudioDecoder {
                 Ok(decoded) => {
                     let spec = *decoded.spec();
                     let frames = decoded.frames();
-                    if frames == 0 {
+                    let ch_count = spec.channels.count();
+                    if frames == 0 || ch_count == 0 {
                         continue;
                     }
-                    let buf = self.sample_buf.get_or_insert_with(|| {
-                        SampleBuffer::<f32>::new(decoded.capacity() as u64, spec)
-                    });
-                    if buf.capacity() < frames * spec.channels.count() {
-                        *buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
+                    let needed_samples = frames * ch_count;
+                    let alloc_frames = frames.max(decoded.capacity()) as u64;
+                    let needs_realloc = self.sample_buf_spec != Some(spec)
+                        || self
+                            .sample_buf
+                            .as_ref()
+                            .is_none_or(|b| b.capacity() < needed_samples);
+                    if needs_realloc {
+                        self.sample_buf = Some(SampleBuffer::<f32>::new(alloc_frames, spec));
+                        self.sample_buf_spec = Some(spec);
                     }
+                    let Some(buf) = self.sample_buf.as_mut() else {
+                        continue;
+                    };
                     buf.copy_interleaved_ref(decoded);
                     let samples = buf.samples();
                     out.extend_from_slice(samples);

@@ -87,10 +87,12 @@ pub fn run() {
                 } => {
                     if status == PlaybackStatus::Playing {
                         if let Some(ref tr) = track {
-                            let mut last = last_recorded_track_id.lock().unwrap();
+                            let mut last = last_recorded_track_id
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner());
                             if last.as_deref() != Some(tr.id.as_str()) {
                                 *last = Some(tr.id.clone());
-                                let db = db_ev.lock().unwrap();
+                                let db = db_ev.lock().unwrap_or_else(|e| e.into_inner());
                                 let _ = db.record_play(
                                     &tr.id,
                                     unix_now_ms(),
@@ -100,33 +102,42 @@ pub fn run() {
                         }
                     }
 
-                    if let Ok(mut ms_guard) = ms_ev.lock() {
-                        if let Some(ref mut ms) = *ms_guard {
-                            let track_id = track.as_ref().map(|t| t.id.clone());
-                            let mut last_ms_id = last_media_track_id.lock().unwrap();
-                            if *last_ms_id != track_id {
-                                *last_ms_id = track_id;
-                                if let Some(ref tr) = track {
-                                    let _ = ms.set_metadata(
-                                        Some(&tr.title),
-                                        Some(&tr.artist),
-                                        Some(&tr.album),
-                                        Some(tr.duration_ms),
-                                        tr.artwork_path.as_deref(),
-                                    );
+                    {
+                        let ms_for_main = Arc::clone(&ms_ev);
+                        let last_ms_for_main = Arc::clone(&last_media_track_id);
+                        let track_for_main = track.clone();
+                        let _ = app_handle.run_on_main_thread(move || {
+                            if let Ok(mut ms_guard) = ms_for_main.lock() {
+                                if let Some(ref mut ms) = *ms_guard {
+                                    let track_id = track_for_main.as_ref().map(|t| t.id.clone());
+                                    let mut last_ms_id = last_ms_for_main
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner());
+                                    if *last_ms_id != track_id {
+                                        *last_ms_id = track_id;
+                                        if let Some(ref tr) = track_for_main {
+                                            let _ = ms.set_metadata(
+                                                Some(&tr.title),
+                                                Some(&tr.artist),
+                                                Some(&tr.album),
+                                                Some(tr.duration_ms),
+                                                tr.artwork_path.as_deref(),
+                                            );
+                                        }
+                                    }
+                                    let _ = ms.set_playback(status, Some(position_ms));
                                 }
                             }
-                            let _ = ms.set_playback(status, Some(position_ms));
-                        }
+                        });
                     }
 
                     let (shuffled, repeat_mode) = {
-                        let qc = qc_ev.lock().unwrap();
+                        let qc = qc_ev.lock().unwrap_or_else(|e| e.into_inner());
                         (qc.shuffled, qc.repeat_mode)
                     };
                     let sleep_ms = sleep_remaining_ms(&sleep_ev);
                     let dto = {
-                        let db = db_ev.lock().unwrap();
+                        let db = db_ev.lock().unwrap_or_else(|e| e.into_inner());
                         state_event_to_playback_dto(
                             &db,
                             status,
@@ -149,20 +160,21 @@ pub fn run() {
                     shuffled,
                 } => {
                     {
-                        let mut qc = qc_ev.lock().unwrap();
+                        let mut qc = qc_ev.lock().unwrap_or_else(|e| e.into_inner());
                         qc.tracks = tracks.clone();
                         qc.current_index = current_index;
                         qc.repeat_mode = repeat_mode;
                         qc.shuffled = shuffled;
                     }
                     let dto = {
-                        let db = db_ev.lock().unwrap();
+                        let db = db_ev.lock().unwrap_or_else(|e| e.into_inner());
                         build_queue_dto(&db, &tracks, current_index, shuffled, repeat_mode)
                     };
                     let _ = app_handle.emit("queue:updated", &dto);
                 }
                 AudioEvent::Error { message } => {
                     tracing::error!("AudioEngine error: {message}");
+                    let _ = app_handle.emit("playback:error", &message);
                 }
             })) {
                 Ok(eng) => {
@@ -178,7 +190,15 @@ pub fn run() {
 
             if let Some(ref eng) = engine {
                 let eng_ms = Arc::clone(eng);
-                match MediaSession::new("Umimuko Music", "com.umimuko.music", None, move |ev| {
+                #[cfg(target_os = "windows")]
+                let hwnd = app
+                    .get_webview_window("main")
+                    .and_then(|w| w.hwnd().ok())
+                    .map(|h| h.0 as *mut std::ffi::c_void);
+                #[cfg(not(target_os = "windows"))]
+                let hwnd = None;
+
+                match MediaSession::new("Umimuko Music", "com.umimuko.music", hwnd, move |ev| {
                     match ev {
                         MediaSessionEvent::Play => eng_ms.play(),
                         MediaSessionEvent::Pause => eng_ms.pause(),
@@ -195,7 +215,7 @@ pub fn run() {
                     }
                 }) {
                     Ok(ms) => {
-                        *media_session_arc.lock().unwrap() = Some(ms);
+                        *media_session_arc.lock().unwrap_or_else(|e| e.into_inner()) = Some(ms);
                     }
                     Err(err) => {
                         tracing::warn!("MediaSession initialization failed: {err}");
@@ -213,7 +233,7 @@ pub fn run() {
                     .spawn(move || loop {
                         std::thread::sleep(Duration::from_secs(1));
                         let expired = {
-                            let mut guard = sleep_bg.lock().unwrap();
+                            let mut guard = sleep_bg.lock().unwrap_or_else(|e| e.into_inner());
                             if let Some(dl) = *guard {
                                 if Instant::now() >= dl {
                                     *guard = None;
@@ -229,11 +249,11 @@ pub fn run() {
                             eng_sleep.pause();
                             let snap = eng_sleep.snapshot();
                             let (shuffled, repeat_mode) = {
-                                let qc = qc_sleep.lock().unwrap();
+                                let qc = qc_sleep.lock().unwrap_or_else(|e| e.into_inner());
                                 (qc.shuffled, qc.repeat_mode)
                             };
                             let dto = {
-                                let db = db_sleep.lock().unwrap();
+                                let db = db_sleep.lock().unwrap_or_else(|e| e.into_inner());
                                 state_event_to_playback_dto(
                                     &db,
                                     PlaybackStatus::Paused,

@@ -330,9 +330,10 @@ impl Equalizer {
         for frame in samples.chunks_mut(channels) {
             for (ch_idx, sample) in frame.iter_mut().enumerate() {
                 let mut s = *sample * preamp;
-                let bank = &mut self.filters[ch_idx];
-                for filter in bank.iter_mut() {
-                    s = filter.run(s);
+                if let Some(bank) = self.filters.get_mut(ch_idx) {
+                    for filter in bank.iter_mut() {
+                        s = filter.run(s);
+                    }
                 }
                 *sample = s;
             }
