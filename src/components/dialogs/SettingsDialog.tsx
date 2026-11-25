@@ -6,7 +6,12 @@ import githubIconUrl from "../../assets/branding/github.png";
 import { useLibraryStore } from "../../store/useLibraryStore";
 import { usePlayerStore } from "../../store/usePlayerStore";
 import { useSettingsStore } from "../../store/useSettingsStore";
-import type { KeybindingsConfig, ListeningStats, ThemeMode } from "../../types/ipc";
+import {
+  THEME_PRESETS,
+  getStoredThemePresetId,
+  setStoredThemePresetId,
+} from "../../theme/ThemeProvider";
+import type { KeybindingsConfig, ListeningStats } from "../../types/ipc";
 import { Icon, type IconName } from "../Icon";
 import { getShowRomanizedPref, setShowRomanizedPref } from "../lyrics/SpicyLyricsView";
 
@@ -55,91 +60,6 @@ const KEYBINDING_ITEMS: Array<{
   { key: "toggleLyrics", title: "Toggle Synced Lyrics", category: "View" },
   { key: "toggleQueue", title: "Toggle Queue", category: "View" },
   { key: "focusSearch", title: "Focus Search", category: "View" },
-];
-
-interface ThemePresetCard {
-  id: string;
-  name: string;
-  description: string;
-  previewAccent: string;
-  previewBackground: string;
-  mode: ThemeMode;
-  adaptive: boolean;
-}
-
-const CURATED_PRESETS: ThemePresetCard[] = [
-  {
-    id: "dynamic",
-    name: "Dynamic Material You",
-    description: "Harmonizes dynamically with the active album artwork colors",
-    previewAccent: "#64B5F6",
-    previewBackground: "#1E242B",
-    mode: "dark",
-    adaptive: true,
-  },
-  {
-    id: "oled_black",
-    name: "OLED Pure Black",
-    description: "Pure pitch-black background with vibrant electric blue accents",
-    previewAccent: "#4DA3FF",
-    previewBackground: "#000000",
-    mode: "dark",
-    adaptive: false,
-  },
-  {
-    id: "nord",
-    name: "Nordic Frost",
-    description: "Arctic, north-bluish clean aesthetic inspired by the polar night",
-    previewAccent: "#88C0D0",
-    previewBackground: "#242933",
-    mode: "dark",
-    adaptive: false,
-  },
-  {
-    id: "dracula",
-    name: "Dracula",
-    description: "Dark gothic palette with bright purple, pink, and green highlights",
-    previewAccent: "#BD93F9",
-    previewBackground: "#1E1F29",
-    mode: "dark",
-    adaptive: false,
-  },
-  {
-    id: "rose_pine",
-    name: "Rosé Pine",
-    description: "Soho chic with soft warm rose, gold, and seafoam pastels",
-    previewAccent: "#EBBCBA",
-    previewBackground: "#191724",
-    mode: "dark",
-    adaptive: false,
-  },
-  {
-    id: "synthwave",
-    name: "Retro Synthwave",
-    description: "80s outrun neon: radioactive magenta, deep purple, and cyber cyan",
-    previewAccent: "#FF71CE",
-    previewBackground: "#140B24",
-    mode: "dark",
-    adaptive: false,
-  },
-  {
-    id: "catppuccin",
-    name: "Catppuccin Mocha",
-    description: "Warm soothing pastel palette with lavender and mauve accents",
-    previewAccent: "#CBA6F7",
-    previewBackground: "#181825",
-    mode: "dark",
-    adaptive: false,
-  },
-  {
-    id: "light_minimal",
-    name: "Clean Studio Light",
-    description: "Crisp, airy daytime workspace with pure white surfaces and cobalt blue",
-    previewAccent: "#1A73E8",
-    previewBackground: "#F8F9FA",
-    mode: "light",
-    adaptive: false,
-  },
 ];
 
 function formatKeyCode(code: string): string {
@@ -227,10 +147,7 @@ export function SettingsDialog() {
       return "equal_power";
     }
   });
-  const [selectedPresetId, setSelectedPresetId] = useState<string>(() => {
-    if (settings.adaptiveAccent) return "dynamic";
-    return settings.theme === "light" ? "light_minimal" : "oled_black";
-  });
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(getStoredThemePresetId);
   const [recordingKey, setRecordingKey] = useState<keyof KeybindingsConfig | null>(null);
   const [keyConflictMsg, setKeyConflictMsg] = useState<string | null>(null);
   const [stats, setStats] = useState<ListeningStats | null>(null);
@@ -327,9 +244,9 @@ export function SettingsDialog() {
           boxShadow: "var(--shadow-elevated)",
         }}
       >
-        {/* Left Sidebar Navigation (220dp) */}
+        {/* Left Sidebar Navigation (252px so "Appearance & System" fits without truncation) */}
         <aside
-          className="w-[220px] shrink-0 flex flex-col p-4 gap-1.5 border-r"
+          className="w-[252px] shrink-0 flex flex-col p-4 gap-1.5 border-r"
           style={{
             backgroundColor: "color-mix(in srgb, var(--surface-2) 65%, var(--surface-1))",
             borderColor: "var(--outline)",
@@ -787,7 +704,7 @@ export function SettingsDialog() {
                 <div className="text-base font-bold">Curated Color Themes</div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {CURATED_PRESETS.map((preset) => {
+                  {THEME_PRESETS.map((preset) => {
                     const isSelected = selectedPresetId === preset.id;
                     return (
                       <button
@@ -795,6 +712,7 @@ export function SettingsDialog() {
                         type="button"
                         onClick={() => {
                           setSelectedPresetId(preset.id);
+                          setStoredThemePresetId(preset.id);
                           void saveSettings({
                             ...settings,
                             theme: preset.mode,
@@ -828,7 +746,7 @@ export function SettingsDialog() {
                             className="text-sm truncate"
                             style={{ fontWeight: isSelected ? 700 : 600 }}
                           >
-                            {preset.name}
+                            {preset.displayName}
                           </div>
                           <div
                             className="text-xs leading-snug mt-0.5 line-clamp-2"
@@ -853,9 +771,13 @@ export function SettingsDialog() {
                   </div>
                   <M3Switch
                     checked={settings.theme === "system"}
-                    onChange={(follow) =>
-                      void setTheme(follow ? "system" : "dark")
-                    }
+                    onChange={(follow) => {
+                      if (follow) {
+                        setSelectedPresetId("dynamic");
+                        setStoredThemePresetId("dynamic");
+                      }
+                      void setTheme(follow ? "system" : "dark");
+                    }}
                     label="Follow System Dark/Light Mode"
                   />
                 </div>
@@ -869,7 +791,13 @@ export function SettingsDialog() {
                   </div>
                   <M3Switch
                     checked={settings.adaptiveAccent}
-                    onChange={(enabled) => void setAdaptiveAccent(enabled)}
+                    onChange={(enabled) => {
+                      if (enabled) {
+                        setSelectedPresetId("dynamic");
+                        setStoredThemePresetId("dynamic");
+                      }
+                      void setAdaptiveAccent(enabled);
+                    }}
                     label="Dynamic Album Colors"
                   />
                 </div>

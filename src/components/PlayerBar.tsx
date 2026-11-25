@@ -153,6 +153,7 @@ export function PlayerBar() {
   const cycleRepeat = usePlayerStore((s) => s.cycleRepeat);
   const setQueueDrawerOpen = usePlayerStore((s) => s.setQueueDrawerOpen);
   const setFullPlayerOpen = usePlayerStore((s) => s.setFullPlayerOpen);
+  const setFullPlayerTab = usePlayerStore((s) => s.setFullPlayerTab);
 
   const playlists = useLibraryStore((s) => s.playlists);
   const addTrackToPlaylist = useLibraryStore((s) => s.addTrackToPlaylist);
@@ -192,7 +193,11 @@ export function PlayerBar() {
         <div className="flex-1 min-w-0 flex items-center gap-3">
           <button
             type="button"
-            onClick={() => track && setFullPlayerOpen(true)}
+            onClick={() => {
+              if (!track) return;
+              setFullPlayerTab("artwork");
+              setFullPlayerOpen(true);
+            }}
             disabled={!track}
             className="flex items-center gap-3 min-w-0 text-left cursor-pointer disabled:cursor-default group"
           >
@@ -484,7 +489,12 @@ export function PlayerBar() {
           <button
             type="button"
             disabled={!track}
-            onClick={() => setFullPlayerOpen(!fullPlayerOpen)}
+            onClick={() => {
+              if (!fullPlayerOpen) {
+                setFullPlayerTab("artwork");
+              }
+              setFullPlayerOpen(!fullPlayerOpen);
+            }}
             className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer disabled:opacity-40"
             style={{
               color: fullPlayerOpen ? "var(--bar-accent)" : "var(--bar-content)",
