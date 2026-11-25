@@ -1,5 +1,7 @@
+pub mod audio;
 pub mod library;
 pub mod lyrics;
+pub mod os;
 
 #[tauri::command]
 fn ping() -> &'static str {
