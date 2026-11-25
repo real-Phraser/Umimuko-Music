@@ -210,4 +210,107 @@ class SpicyLyricsServiceTest {
         )
         assertEquals(222222L, picked)
     }
+
+    @Test
+    fun rejectsUnrelatedSongsInsteadOfReturningWrongTrack() {
+        val itunesResponse = """
+            {
+              "resultCount": 2,
+              "results": [
+                {
+                  "trackId": 1146195596,
+                  "artistName": "Frank Ocean",
+                  "trackName": "White Ferrari",
+                  "trackTimeMillis": 248000
+                },
+                {
+                  "trackId": 999999,
+                  "artistName": "Some Other Artist",
+                  "trackName": "Completely Different",
+                  "trackTimeMillis": 255000
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val picked = SpicyLyricsService.pickBestItunesTrackId(
+            itunesJson = itunesResponse,
+            artist = "Tyler, The Creator",
+            title = "911",
+            durationMs = 255000L
+        )
+        assertNull(picked)
+
+        val pickedWithFeatArtist = SpicyLyricsService.pickBestItunesTrackId(
+            itunesJson = itunesResponse,
+            artist = "Tyler, The Creator, Frank Ocean",
+            title = "911",
+            durationMs = 255000L
+        )
+        assertNull(pickedWithFeatArtist)
+    }
+
+    @Test
+    fun matchesSplitTitleAndFeaturedArtists() {
+        val itunesResponse = """
+            {
+              "resultCount": 2,
+              "results": [
+                {
+                  "trackId": 1146195596,
+                  "artistName": "Frank Ocean",
+                  "trackName": "White Ferrari",
+                  "trackTimeMillis": 248000
+                },
+                {
+                  "trackId": 1254572564,
+                  "artistName": "Tyler, The Creator",
+                  "trackName": "911 / Mr. Lonely (feat. Frank Ocean & Steve Lacy)",
+                  "trackTimeMillis": 255653
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val picked = SpicyLyricsService.pickBestItunesTrackId(
+            itunesJson = itunesResponse,
+            artist = "Tyler, The Creator, Frank Ocean",
+            title = "911",
+            durationMs = 255000L
+        )
+        assertEquals(1254572564L, picked)
+
+        val pickedWithoutPunctuation = SpicyLyricsService.pickBestItunesTrackId(
+            itunesJson = itunesResponse,
+            artist = "Tyler The Creator",
+            title = "911 / Mr. Lonely",
+            durationMs = 255000L
+        )
+        assertEquals(1254572564L, pickedWithoutPunctuation)
+    }
+
+    @Test
+    fun rejectsCandidateWithLargeDurationMismatch() {
+        val itunesResponse = """
+            {
+              "resultCount": 1,
+              "results": [
+                {
+                  "trackId": 123456,
+                  "artistName": "Target Artist",
+                  "trackName": "Nightfall",
+                  "trackTimeMillis": 300000
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val picked = SpicyLyricsService.pickBestItunesTrackId(
+            itunesJson = itunesResponse,
+            artist = "Target Artist",
+            title = "Nightfall",
+            durationMs = 200000L
+        )
+        assertNull(picked)
+    }
 }

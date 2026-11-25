@@ -28,7 +28,10 @@ object SpicyLyricsService {
     private const val KEY_API_KEY = "apiKey"
     private const val KEY_SHOW_ROMANIZED = "showRomanized"
     private const val USER_AGENT = "UmimukoMusic/0.26.0 ( https://github.com/real-Phraser )"
-    private const val CACHE_SUBDIR = "spicy-lyrics"
+    private const val CACHE_SUBDIR = "spicy-lyrics-v2"
+    private const val ITUNES_SEARCH_LIMIT = 25
+    private const val MAX_DURATION_DIFF_MS = 15_000L
+    private const val MIN_MATCH_SCORE = 40
 
     private val prefs: Preferences by lazy { Preferences.userRoot().node(PREFS_NODE) }
 
@@ -146,11 +149,60 @@ object SpicyLyricsService {
     }
 
     internal fun resolveItunesTrackId(artist: String, title: String, durationMs: Long): Long? {
-        val query = listOf(artist.trim(), title.trim()).filter { it.isNotEmpty() }.joinToString(" ")
-        if (query.isBlank()) return null
+        val cleanTitle = title.trim()
+        if (cleanTitle.isBlank()) return null
 
-        val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8)
-        val url = "https://itunes.apple.com/search?term=$encoded&entity=song&limit=5"
+        val primaryArtist = stripFeaturedSuffix(artist.trim())
+        val strippedTitle = stripFeaturedSuffix(cleanTitle)
+        val primarySplitTitle = cleanTitle.substringBefore('/').trim()
+            .let { stripFeaturedSuffix(it) }
+
+        val candidateUrls = buildList {
+            val primaryQuery = listOf(primaryArtist, cleanTitle)
+                .filter { it.isNotEmpty() }
+                .joinToString(" ")
+            if (primaryQuery.isNotBlank()) {
+                add(buildItunesSearchUrl(primaryQuery))
+            }
+
+            if (primarySplitTitle.isNotEmpty() && !primarySplitTitle.equals(cleanTitle, ignoreCase = true)) {
+                val splitQuery = listOf(primaryArtist, primarySplitTitle)
+                    .filter { it.isNotEmpty() }
+                    .joinToString(" ")
+                add(buildItunesSearchUrl(splitQuery))
+            }
+
+            add(buildItunesSearchUrl(cleanTitle, attribute = "songTerm"))
+
+            if (strippedTitle.isNotEmpty() && !strippedTitle.equals(cleanTitle, ignoreCase = true)) {
+                add(buildItunesSearchUrl(strippedTitle, attribute = "songTerm"))
+            }
+            if (primarySplitTitle.isNotEmpty() &&
+                !primarySplitTitle.equals(cleanTitle, ignoreCase = true) &&
+                !primarySplitTitle.equals(strippedTitle, ignoreCase = true)
+            ) {
+                add(buildItunesSearchUrl(primarySplitTitle, attribute = "songTerm"))
+            }
+        }.distinct()
+
+        for (url in candidateUrls) {
+            queryItunesSearch(url, artist, title, durationMs)?.let { return it }
+        }
+        return null
+    }
+
+    private fun buildItunesSearchUrl(term: String, attribute: String? = null): String {
+        val encoded = URLEncoder.encode(term, StandardCharsets.UTF_8)
+        val attrParam = if (attribute != null) "&attribute=$attribute" else ""
+        return "https://itunes.apple.com/search?term=$encoded&entity=song$attrParam&limit=$ITUNES_SEARCH_LIMIT"
+    }
+
+    private fun queryItunesSearch(
+        url: String,
+        artist: String,
+        title: String,
+        durationMs: Long
+    ): Long? {
         return try {
             val request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -180,41 +232,67 @@ object SpicyLyricsService {
         val results = root["results"] as? List<*> ?: return null
         if (results.isEmpty()) return null
 
-        val cleanArtist = artist.trim().lowercase()
-        val cleanTitle = title.trim().lowercase()
+        val rawTitle = title.trim().lowercase()
+        val normTitle = normalizeForMatch(title)
+        if (normTitle.isEmpty()) return null
+        val titleHalves = splitTitleHalves(title)
+        val titleTokens = tokenize(normTitle).toSet()
+
+        val rawArtist = artist.trim().lowercase()
+        val normArtist = normalizeForMatch(artist)
+        val artistTokens = significantTokens(normArtist)
 
         var bestId: Long? = null
-        var bestScore = Int.MIN_VALUE
+        var bestScore = MIN_MATCH_SCORE - 1
 
         for (item in results) {
             val map = item as? Map<*, *> ?: continue
             val trackId = (map["trackId"] as? Number)?.toLong()?.takeIf { it > 0L } ?: continue
-            val trackName = (map["trackName"] as? String).orEmpty().trim().lowercase()
-            val artistName = (map["artistName"] as? String).orEmpty().trim().lowercase()
+            val rawTrackName = (map["trackName"] as? String).orEmpty().trim().lowercase()
+            val rawArtistName = (map["artistName"] as? String).orEmpty().trim().lowercase()
             val trackTimeMs = (map["trackTimeMillis"] as? Number)?.toLong() ?: 0L
 
-            var score = 0
-            if (cleanTitle.isNotEmpty()) {
-                score += when {
-                    trackName == cleanTitle -> 50
-                    trackName.contains(cleanTitle) || cleanTitle.contains(trackName) -> 25
-                    else -> -10
-                }
+            if (durationMs > 0L && trackTimeMs > 0L && abs(durationMs - trackTimeMs) > MAX_DURATION_DIFF_MS) {
+                continue
             }
-            if (cleanArtist.isNotEmpty()) {
-                score += when {
-                    artistName == cleanArtist -> 40
-                    artistName.contains(cleanArtist) || cleanArtist.contains(artistName) -> 20
-                    else -> -10
-                }
+
+            val normTrack = normalizeForMatch(rawTrackName)
+            val trackHalves = splitTitleHalves(rawTrackName)
+            val trackTokens = tokenize(normTrack).toSet()
+            val titleScore = scoreTitleMatch(
+                rawTitle = rawTitle,
+                normTitle = normTitle,
+                titleHalves = titleHalves,
+                titleTokens = titleTokens,
+                rawTrack = rawTrackName,
+                normTrack = normTrack,
+                trackHalves = trackHalves,
+                trackTokens = trackTokens
+            ) ?: continue
+
+            val artistScore = if (normArtist.isNotEmpty()) {
+                val normTrackArtist = normalizeForMatch(rawArtistName)
+                val trackArtistTokens = significantTokens(normTrackArtist)
+                scoreArtistMatch(
+                    rawArtist = rawArtist,
+                    normArtist = normArtist,
+                    artistTokens = artistTokens,
+                    rawTrackArtist = rawArtistName,
+                    normTrackArtist = normTrackArtist,
+                    trackArtistTokens = trackArtistTokens
+                ) ?: continue
+            } else {
+                0
             }
+
+            var score = titleScore + artistScore
             if (durationMs > 0L && trackTimeMs > 0L) {
                 val diff = abs(durationMs - trackTimeMs)
                 score += when {
                     diff <= 2_000L -> 30
                     diff <= 5_000L -> 15
-                    diff <= 10_000L -> 0
-                    else -> -25
+                    diff <= 10_000L -> 5
+                    else -> -5
                 }
             }
 
@@ -226,6 +304,85 @@ object SpicyLyricsService {
 
         return bestId
     }
+
+    private fun scoreTitleMatch(
+        rawTitle: String,
+        normTitle: String,
+        titleHalves: List<String>,
+        titleTokens: Set<String>,
+        rawTrack: String,
+        normTrack: String,
+        trackHalves: List<String>,
+        trackTokens: Set<String>
+    ): Int? {
+        if (normTrack.isEmpty()) return null
+        if (rawTrack == rawTitle) return 60
+        if (normTrack == normTitle) return 50
+        if (trackHalves.any { it == normTitle } || titleHalves.any { it == normTrack }) return 45
+
+        if (titleTokens.isEmpty() || trackTokens.isEmpty()) return null
+        val common = titleTokens.intersect(trackTokens)
+        if (common.isEmpty()) return null
+
+        if (common.size == titleTokens.size || common.size == trackTokens.size) {
+            return 30
+        }
+        val maxTokens = maxOf(titleTokens.size, trackTokens.size)
+        return if (common.size * 2 >= maxTokens) 20 else null
+    }
+
+    private fun scoreArtistMatch(
+        rawArtist: String,
+        normArtist: String,
+        artistTokens: Set<String>,
+        rawTrackArtist: String,
+        normTrackArtist: String,
+        trackArtistTokens: Set<String>
+    ): Int? {
+        if (normTrackArtist.isEmpty()) return null
+        if (rawTrackArtist == rawArtist) return 50
+        if (normTrackArtist == normArtist) return 45
+        if (normTrackArtist.length >= 2 && normArtist.length >= 2 &&
+            (normTrackArtist.contains(normArtist) || normArtist.contains(normTrackArtist))
+        ) {
+            return 30
+        }
+        return if (artistTokens.intersect(trackArtistTokens).isNotEmpty()) 20 else null
+    }
+
+    private fun stripFeaturedSuffix(text: String): String {
+        return text
+            .replace(Regex("""\s*[\(\[]\s*(?:feat\.?|ft\.?|featuring)\s+[^\)\]]*[\)\]]""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+(?:feat\.?|ft\.?|featuring)\s+.*$""", RegexOption.IGNORE_CASE), "")
+            .trim()
+    }
+
+    private fun normalizeForMatch(text: String): String {
+        return stripFeaturedSuffix(text)
+            .lowercase()
+            .replace(Regex("[^\\p{L}\\p{Nd}]+"), " ")
+            .trim()
+    }
+
+    private fun splitTitleHalves(text: String): List<String> {
+        if (!text.contains('/')) return emptyList()
+        return text.split('/')
+            .map { normalizeForMatch(it) }
+            .filter { it.isNotEmpty() }
+    }
+
+    private fun tokenize(normalized: String): List<String> {
+        if (normalized.isEmpty()) return emptyList()
+        return normalized.split(Regex("\\s+")).filter { it.isNotEmpty() }
+    }
+
+    private fun significantTokens(normalized: String): Set<String> {
+        val all = tokenize(normalized)
+        val filtered = all.filterNot { it in ARTIST_STOPWORDS }
+        return (if (filtered.isNotEmpty()) filtered else all).toSet()
+    }
+
+    private val ARTIST_STOPWORDS = setOf("the", "a", "an", "and", "of")
 
     internal fun readFromDiskCache(song: DesktopSong): SpicyLyrics? {
         return try {
