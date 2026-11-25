@@ -11,10 +11,11 @@ import {
   getStoredThemePresetId,
   setStoredThemePresetId,
 } from "../../theme/ThemeProvider";
-import type { KeybindingsConfig, ListeningStats } from "../../types/ipc";
+import type { ListeningStats } from "../../types/ipc";
 import { Icon, type IconName } from "../Icon";
 import { getStartupIntroEnabled, setStartupIntroEnabled } from "../StartupIntro";
 import { getShowRomanizedPref, setShowRomanizedPref } from "../lyrics/SpicyLyricsView";
+import { KeybindingsTab } from "./KeybindingsTab";
 
 type SettingsTabId =
   | "audio"
@@ -34,53 +35,6 @@ const SETTINGS_TABS: Array<{ id: SettingsTabId; title: string; icon: IconName }>
   { id: "stats", title: "Listening Stats", icon: "queue" },
   { id: "about", title: "About & Credits", icon: "info" },
 ];
-
-const DEFAULT_KEYBINDINGS: KeybindingsConfig = {
-  playPause: "Space",
-  nextTrack: "ArrowRight",
-  prevTrack: "ArrowLeft",
-  volumeUp: "ArrowUp",
-  volumeDown: "ArrowDown",
-  toggleMute: "KeyM",
-  toggleLyrics: "KeyL",
-  toggleQueue: "KeyQ",
-  focusSearch: "KeyF",
-};
-
-const KEYBINDING_ITEMS: Array<{
-  key: keyof KeybindingsConfig;
-  title: string;
-  category: "Playback" | "Audio" | "View";
-}> = [
-  { key: "playPause", title: "Play / Pause", category: "Playback" },
-  { key: "nextTrack", title: "Next Track", category: "Playback" },
-  { key: "prevTrack", title: "Previous Track", category: "Playback" },
-  { key: "volumeUp", title: "Volume Up (+5%)", category: "Audio" },
-  { key: "volumeDown", title: "Volume Down (-5%)", category: "Audio" },
-  { key: "toggleMute", title: "Mute / Unmute", category: "Audio" },
-  { key: "toggleLyrics", title: "Toggle Synced Lyrics", category: "View" },
-  { key: "toggleQueue", title: "Toggle Queue", category: "View" },
-  { key: "focusSearch", title: "Focus Search", category: "View" },
-];
-
-function formatKeyCode(code: string): string {
-  switch (code) {
-    case "Space":
-      return "Space";
-    case "ArrowRight":
-      return "→";
-    case "ArrowLeft":
-      return "←";
-    case "ArrowUp":
-      return "↑";
-    case "ArrowDown":
-      return "↓";
-    case "Enter":
-      return "↵ Enter";
-    default:
-      return code.startsWith("Key") ? code.slice(3) : code;
-  }
-}
 
 function M3Switch({
   checked,
@@ -150,8 +104,6 @@ export function SettingsDialog() {
   });
   const [selectedPresetId, setSelectedPresetId] = useState<string>(getStoredThemePresetId);
   const [introEnabled, setIntroEnabled] = useState<boolean>(getStartupIntroEnabled);
-  const [recordingKey, setRecordingKey] = useState<keyof KeybindingsConfig | null>(null);
-  const [keyConflictMsg, setKeyConflictMsg] = useState<string | null>(null);
   const [stats, setStats] = useState<ListeningStats | null>(null);
 
   useEffect(() => {
@@ -167,42 +119,13 @@ export function SettingsDialog() {
   useEffect(() => {
     if (activeDialog !== "settings") return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (recordingKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.key === "Escape") {
-          setRecordingKey(null);
-          return;
-        }
-        if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) {
-          return;
-        }
-        const conflictItem = KEYBINDING_ITEMS.find(
-          (item) =>
-            item.key !== recordingKey && settings.keybindings[item.key] === e.code
-        );
-        if (conflictItem) {
-          setKeyConflictMsg(`Shortcut replaced from '${conflictItem.title}'`);
-        } else {
-          setKeyConflictMsg(null);
-        }
-        void saveSettings({
-          ...settings,
-          keybindings: {
-            ...settings.keybindings,
-            [recordingKey]: e.code,
-          },
-        });
-        setRecordingKey(null);
-        return;
-      }
       if (e.key === "Escape") {
         openDialog(null);
       }
     };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [activeDialog, openDialog, recordingKey, saveSettings, settings]);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeDialog, openDialog]);
 
   if (activeDialog !== "settings") return null;
 
@@ -858,145 +781,7 @@ export function SettingsDialog() {
               </>
             )}
 
-            {activeTab === "keybindings" && (
-              <>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-base font-bold">Keyboard Shortcuts</div>
-                    <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                      Customize application hotkeys. Press Esc during recording to cancel.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRecordingKey(null);
-                      setKeyConflictMsg(null);
-                      void saveSettings({ ...settings, keybindings: DEFAULT_KEYBINDINGS });
-                    }}
-                    className="px-3.5 py-2 rounded-xl text-xs font-medium cursor-pointer shrink-0"
-                    style={{ border: "1px solid var(--outline-strong)" }}
-                  >
-                    Reset All to Defaults
-                  </button>
-                </div>
-
-                {keyConflictMsg && (
-                  <div
-                    className="px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-3 text-xs"
-                    style={{
-                      backgroundColor: "var(--danger-container)",
-                      border: "1px solid var(--danger)",
-                      color: "var(--danger)",
-                    }}
-                  >
-                    <span>{keyConflictMsg}</span>
-                    <button
-                      type="button"
-                      onClick={() => setKeyConflictMsg(null)}
-                      className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer"
-                    >
-                      <Icon name="close" size={16} />
-                    </button>
-                  </div>
-                )}
-
-                {(["Playback", "Audio", "View"] as const).map((category) => {
-                  const items = KEYBINDING_ITEMS.filter((i) => i.category === category);
-                  return (
-                    <div key={category} className="space-y-2">
-                      <div
-                        className="text-[11px] font-bold uppercase tracking-wider pt-1"
-                        style={{ color: "var(--accent)" }}
-                      >
-                        {category}
-                      </div>
-                      <div
-                        className="px-4 py-2 rounded-2xl border"
-                        style={{
-                          backgroundColor: "var(--surface-2)",
-                          borderColor: "var(--outline)",
-                        }}
-                      >
-                        {items.map((item, idx) => {
-                          const isRecording = recordingKey === item.key;
-                          return (
-                            <div key={item.key}>
-                              <div className="py-2 flex items-center justify-between gap-3">
-                                <span className="text-sm font-medium">{item.title}</span>
-                                <div className="flex items-center gap-2">
-                                  {isRecording ? (
-                                    <span
-                                      className="px-3 py-1.5 rounded-[10px] text-xs font-bold border-2"
-                                      style={{
-                                        backgroundColor: "var(--accent-container)",
-                                        borderColor: "var(--accent)",
-                                        color: "var(--on-accent-container)",
-                                      }}
-                                    >
-                                      Press keys... (Esc)
-                                    </span>
-                                  ) : (
-                                    <>
-                                      <span
-                                        className="px-2.5 py-1 rounded-[10px] font-mono text-xs font-semibold"
-                                        style={{
-                                          backgroundColor: "var(--surface-3)",
-                                          border: "1px solid var(--outline)",
-                                          color: "var(--text-secondary)",
-                                        }}
-                                      >
-                                        {formatKeyCode(settings.keybindings[item.key])}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setKeyConflictMsg(null);
-                                          setRecordingKey(item.key);
-                                        }}
-                                        className="h-8 px-3 rounded-[10px] text-xs font-medium cursor-pointer"
-                                        style={{ border: "1px solid var(--outline-strong)" }}
-                                      >
-                                        Rebind
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setKeyConflictMsg(null);
-                                          void saveSettings({
-                                            ...settings,
-                                            keybindings: {
-                                              ...settings.keybindings,
-                                              [item.key]: DEFAULT_KEYBINDINGS[item.key],
-                                            },
-                                          });
-                                        }}
-                                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
-                                        style={{ color: "var(--text-secondary)" }}
-                                        title="Reset shortcut"
-                                        aria-label={`Reset ${item.title}`}
-                                      >
-                                        <Icon name="restore" size={16} />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              {idx < items.length - 1 && (
-                                <div
-                                  className="h-px my-0.5"
-                                  style={{ backgroundColor: "var(--outline)" }}
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </>
-            )}
+            {activeTab === "keybindings" && <KeybindingsTab />}
 
             {activeTab === "stats" && (
               <>
