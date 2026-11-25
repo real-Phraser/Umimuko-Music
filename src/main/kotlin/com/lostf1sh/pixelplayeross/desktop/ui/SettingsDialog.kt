@@ -91,6 +91,7 @@ fun SettingsDialog(
                     SettingsTab.entries.forEach { tab ->
                         val selected = activeTab == tab
                         Surface(
+                            onClick = { activeTab = tab },
                             shape = RoundedCornerShape(14.dp),
                             color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                             modifier = Modifier.fillMaxWidth()
@@ -98,7 +99,6 @@ fun SettingsDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { activeTab = tab }
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -264,15 +264,9 @@ private fun AudioEngineTab(audio: AudioController) {
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Transition curve:", style = MaterialTheme.typography.bodySmall)
-                    FilterChip(
-                        selected = crossfade.curve == CrossfadeCurve.EQUAL_POWER,
-                        onClick = { audio.setCrossfadeCurve(CrossfadeCurve.EQUAL_POWER) },
-                        label = { Text("Equal-Power") }
-                    )
-                    FilterChip(
-                        selected = crossfade.curve == CrossfadeCurve.LINEAR,
-                        onClick = { audio.setCrossfadeCurve(CrossfadeCurve.LINEAR) },
-                        label = { Text("Linear") }
+                    TransitionCurveChips(
+                        selectedCurve = crossfade.curve,
+                        onSelectCurve = { audio.setCrossfadeCurve(it) }
                     )
                 }
             }

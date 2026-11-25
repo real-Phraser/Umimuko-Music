@@ -367,9 +367,9 @@ fun LibraryPanel(
                     verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Text("YOUR MUSIC",Modifier.padding(12.dp),style=MaterialTheme.typography.labelSmall)
                     LibraryTab.entries.forEach { item ->
-                        Surface(shape=RoundedCornerShape(18.dp),color=if(tab==item)
+                        Surface(onClick={ navigate(item) },shape=RoundedCornerShape(18.dp),color=if(tab==item)
                             MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.background) {
-                            Row(Modifier.fillMaxWidth().clickable { navigate(item) }.padding(14.dp),
+                            Row(Modifier.fillMaxWidth().padding(14.dp),
                                 verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 Glyph(item.icon,MaterialTheme.colorScheme.primary)
                                 Text(item.title,style=MaterialTheme.typography.labelLarge)
@@ -588,8 +588,8 @@ fun LibraryPanel(
                             contentPadding=PaddingValues(bottom=16.dp),horizontalArrangement=Arrangement.spacedBy(12.dp),
                             verticalArrangement=Arrangement.spacedBy(12.dp)) {
                             items(visibleGroups,key={it.id}) { group ->
-                                Surface(shape=RoundedCornerShape(20.dp),color=MaterialTheme.colorScheme.surface) {
-                                    Column(Modifier.fillMaxWidth().clickable {openGroup(group.id)}.padding(16.dp),
+                                Surface(onClick={openGroup(group.id)},shape=RoundedCornerShape(20.dp),color=MaterialTheme.colorScheme.surface) {
+                                    Column(Modifier.fillMaxWidth().padding(16.dp),
                                         verticalArrangement=Arrangement.spacedBy(8.dp),
                                         horizontalAlignment=Alignment.CenterHorizontally) {
                                         Artwork(112.dp,coverPath=group.songs.firstOrNull {it.coverPath!=null}?.coverPath)
@@ -837,7 +837,7 @@ private fun TrackRow(song:DesktopSong,active:Boolean,playing:Boolean,ready:Boole
     onRemove:(()->Unit)?) {
     var menu by remember {mutableStateOf(false)}
     Surface(shape=RoundedCornerShape(16.dp),color=if(active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface) {
-        Row(Modifier.fillMaxWidth().onPointerEvent(PointerEventType.Press) { event ->
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).onPointerEvent(PointerEventType.Press) { event ->
             if(event.buttons.isSecondaryPressed) {menu=true;event.changes.forEach {it.consume()} }
         }.clickable(enabled=ready,onClick=onPlay).padding(10.dp),
             verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {

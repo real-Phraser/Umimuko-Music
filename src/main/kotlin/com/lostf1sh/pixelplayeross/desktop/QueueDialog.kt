@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -182,7 +183,7 @@ fun QueuePanel(audio:AudioController,onDismiss:()->Unit,onSaveQueue:((List<Deskt
                                             translationY=dragCenter-(item?.let {it.offset+it.size/2f} ?: dragCenter)
                                         }
                                     }) {
-                                    Row(Modifier.fillMaxWidth().queueContextMenu {toggle(key)}
+                                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).queueContextMenu {toggle(key)}
                                         .clickable {if(selecting) toggle(key) else audio.jumpToKey(key)}.padding(start=4.dp,end=4.dp,top=6.dp,bottom=6.dp),
                                         verticalAlignment=Alignment.CenterVertically) {
                                         if(selecting) Checkbox(checked=key in selected,onCheckedChange={toggle(key)},

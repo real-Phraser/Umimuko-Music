@@ -100,9 +100,9 @@ fun PlayerBar(audio:AudioController, liked:Boolean, editable:Boolean,
                         SmallPlayerButton("levels","Audio DSP & Equalizer",true,onEqualizer)
                         if (sleepTimerState?.isActive == true) {
                             Surface(
+                                onClick = onSleepTimer,
                                 shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.clickable(onClick = onSleepTimer)
+                                color = MaterialTheme.colorScheme.primaryContainer
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),

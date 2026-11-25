@@ -18,6 +18,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
@@ -272,7 +273,7 @@ private fun HomeCollectionCard(item:HomeCollection,home:HomeState,ready:Boolean,
     val group=item.group;val colors=MaterialTheme.colorScheme
     val pinIndex=home.data.pins().indexOfFirst{it.type()==item.type && it.id()==group.id}
     Surface(shape=RoundedCornerShape(20.dp),color=colors.surface,modifier=modifier.width(176.dp)) {
-        Column(Modifier.fillMaxWidth().onPointerEvent(PointerEventType.Press){event->
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).onPointerEvent(PointerEventType.Press){event->
             if(event.buttons.isSecondaryPressed){menu=true;event.changes.forEach{it.consume()}}
         }.clickable{onOpen(item.type,group.id)}.padding(12.dp),horizontalAlignment=Alignment.CenterHorizontally,
             verticalArrangement=Arrangement.spacedBy(7.dp)) {

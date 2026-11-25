@@ -1,5 +1,6 @@
 package com.lostf1sh.pixelplayeross.desktop.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,7 +11,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -262,16 +266,9 @@ fun EqualizerDialog(
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Curve: ", style = MaterialTheme.typography.labelMedium)
-                            FilterChip(
-                                selected = crossfade.curve == CrossfadeCurve.EQUAL_POWER,
-                                onClick = { audio.setCrossfadeCurve(CrossfadeCurve.EQUAL_POWER) },
-                                label = { Text("Equal-Power") }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            FilterChip(
-                                selected = crossfade.curve == CrossfadeCurve.LINEAR,
-                                onClick = { audio.setCrossfadeCurve(CrossfadeCurve.LINEAR) },
-                                label = { Text("Linear") }
+                            TransitionCurveChips(
+                                selectedCurve = crossfade.curve,
+                                onSelectCurve = { audio.setCrossfadeCurve(it) }
                             )
                         }
                     }
@@ -395,3 +392,57 @@ private fun Modifier.rotateSlider(): Modifier = this.then(
         }
     }
 )
+
+/**
+ * Clipped pill chips for selecting the crossfade transition curve without Material3 Desktop
+ * FilterChip's unclipped inner label hover artifact.
+ */
+@Composable
+internal fun TransitionCurveChips(
+    selectedCurve: CrossfadeCurve,
+    onSelectCurve: (CrossfadeCurve) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TransitionCurveChip(
+            label = "Equal-Power",
+            selected = selectedCurve == CrossfadeCurve.EQUAL_POWER,
+            onClick = { onSelectCurve(CrossfadeCurve.EQUAL_POWER) }
+        )
+        TransitionCurveChip(
+            label = "Linear",
+            selected = selectedCurve == CrossfadeCurve.LINEAR,
+            onClick = { onSelectCurve(CrossfadeCurve.LINEAR) }
+        )
+    }
+}
+
+@Composable
+private fun TransitionCurveChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.height(32.dp).semantics { this.selected = selected },
+        shape = RoundedCornerShape(8.dp),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    }
+}

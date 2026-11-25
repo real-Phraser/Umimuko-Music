@@ -608,9 +608,10 @@ private fun PlayerScrubberAndControls(
                 FullPlayerButton("playlist_add", "Add to playlist", editable && state.song != null, onAdd)
                 if (sleepTimerState?.isActive == true) {
                     Surface(
+                        onClick = onSleepTimer,
                         shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-                        modifier = Modifier.padding(horizontal = 4.dp).clickable(onClick = onSleepTimer)
+                        modifier = Modifier.padding(horizontal = 4.dp)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
