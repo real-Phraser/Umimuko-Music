@@ -140,6 +140,18 @@ impl SpicyLyricsService {
         self.write_disk_cache(key, lyrics);
     }
 
+    /// Removes any cached lyrics for `query` from memory and disk so the next fetch refreshes.
+    pub fn invalidate_cache(&self, query: &LyricsQuery) {
+        let key = Self::cache_key(query);
+        if let Ok(mut guard) = self.memory_cache.write() {
+            guard.remove(&key);
+        }
+        let path = self.disk_cache_path(&key);
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     /// Loads `.ttml` or `.lrc` sidecar file next to `track_path`.
     pub fn load_sidecar_lyrics(track_path: &Path) -> Option<SpicyLyrics> {
         for ext in ["ttml", "lrc"] {
