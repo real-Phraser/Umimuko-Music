@@ -127,7 +127,7 @@ export function KeybindingsTab() {
   }, [recordingAction, setShortcutBinding]);
 
   return (
-    <>
+    <div className="space-y-[18px]">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-base font-bold">Keyboard Shortcuts</div>
@@ -265,6 +265,6 @@ export function KeybindingsTab() {
           </div>
         );
       })}
-    </>
+    </div>
   );
 }

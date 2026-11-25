@@ -1,5 +1,6 @@
+import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
-import { api, BUILT_IN_EQ_PRESETS, DEFAULT_APP_SETTINGS } from "../api/tauri";
+import { api, BUILT_IN_EQ_PRESETS, DEFAULT_APP_SETTINGS, isTauriRuntime } from "../api/tauri";
 import type {
   AppSettings,
   CrossfadeConfig,
@@ -12,6 +13,22 @@ import type {
 } from "../types/ipc";
 
 const KEYBINDINGS_STORAGE_KEY = "umimuko_keybindings_v1";
+const PLAYBACK_RATE_STORAGE_KEY = "umimuko_playback_rate";
+
+function clampPlaybackRate(rate: number): number {
+  if (!Number.isFinite(rate)) return 1.0;
+  return Math.min(2.0, Math.max(0.5, Math.round(rate * 100) / 100));
+}
+
+function loadPlaybackRate(): number {
+  try {
+    const raw = localStorage.getItem(PLAYBACK_RATE_STORAGE_KEY);
+    if (!raw) return 1.0;
+    return clampPlaybackRate(Number(raw));
+  } catch {
+    return 1.0;
+  }
+}
 
 export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   "play_pause",
@@ -188,6 +205,7 @@ interface SettingsStore {
   settings: AppSettings;
   shortcutBindings: ShortcutBindings;
   eqPresets: EqualizerPreset[];
+  playbackRate: number;
   loaded: boolean;
 
   init: () => Promise<void>;
@@ -200,6 +218,7 @@ interface SettingsStore {
   applyEqPreset: (preset: EqualizerPreset) => Promise<void>;
   saveEqPreset: (name: string) => Promise<void>;
   updateCrossfade: (config: CrossfadeConfig) => Promise<void>;
+  setPlaybackRate: (rate: number) => Promise<void>;
   setShortcutBinding: (action: ShortcutAction, combo: KeyCombination) => ShortcutAction | null;
   resetShortcutAction: (action: ShortcutAction) => void;
   resetAllShortcuts: () => void;
@@ -209,6 +228,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   settings: DEFAULT_APP_SETTINGS,
   shortcutBindings: loadShortcutBindings(),
   eqPresets: BUILT_IN_EQ_PRESETS,
+  playbackRate: loadPlaybackRate(),
   loaded: false,
 
   init: async () => {
@@ -289,6 +309,23 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ settings: next });
     await api.setCrossfadeConfig(config);
     await api.saveSettings(next);
+  },
+
+  setPlaybackRate: async (rate) => {
+    const clamped = clampPlaybackRate(rate);
+    set({ playbackRate: clamped });
+    try {
+      localStorage.setItem(PLAYBACK_RATE_STORAGE_KEY, String(clamped));
+    } catch {
+      // Ignore storage errors
+    }
+    if (isTauriRuntime()) {
+      try {
+        await invoke("set_playback_rate", { rate: clamped });
+      } catch {
+        // Backend command may not be exposed yet
+      }
+    }
   },
 
   setShortcutBinding: (action, combo) => {

@@ -69,6 +69,94 @@ function M3Switch({
   );
 }
 
+function SteppedSlider({
+  min,
+  max,
+  step,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (next: number) => void;
+  ariaLabel: string;
+}) {
+  const span = max - min;
+  const pct = span > 0 ? Math.min(100, Math.max(0, ((value - min) / span) * 100)) : 0;
+  const tickCount = Math.round(span / step) + 1;
+
+  return (
+    <div className="relative flex items-center h-6">
+      <div
+        className="absolute inset-x-0 h-1 rounded-full pointer-events-none"
+        style={{
+          background: `linear-gradient(90deg, var(--accent) ${pct}%, var(--surface-3) ${pct}%)`,
+        }}
+      />
+      <div className="absolute inset-x-[6px] flex items-center justify-between pointer-events-none">
+        {Array.from({ length: tickCount }, (_, i) => {
+          const tickVal = min + i * step;
+          const active = tickVal <= value + step * 0.01;
+          return (
+            <span
+              key={i}
+              className="w-[3px] h-[3px] rounded-full"
+              style={{
+                backgroundColor: active
+                  ? "color-mix(in srgb, var(--on-accent) 75%, transparent)"
+                  : "var(--outline-strong)",
+              }}
+            />
+          );
+        })}
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-label={ariaLabel}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="umimuko-slider w-full relative z-10"
+        style={{ background: "transparent", height: 4 }}
+      />
+    </div>
+  );
+}
+
+function TintedMaskIcon({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+}) {
+  return (
+    <div
+      role="img"
+      aria-label={alt}
+      className={className}
+      style={{
+        backgroundColor: "var(--accent)",
+        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${src})`,
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+      }}
+    />
+  );
+}
+
 export function SettingsDialog() {
   const activeDialog = useLibraryStore((s) => s.activeDialog);
   const openDialog = useLibraryStore((s) => s.openDialog);
@@ -78,13 +166,14 @@ export function SettingsDialog() {
   const refreshLyrics = usePlayerStore((s) => s.refreshLyrics);
 
   const settings = useSettingsStore((s) => s.settings);
+  const playbackRate = useSettingsStore((s) => s.playbackRate);
   const saveSettings = useSettingsStore((s) => s.saveSettings);
   const setTheme = useSettingsStore((s) => s.setTheme);
-  const setAdaptiveAccent = useSettingsStore((s) => s.setAdaptiveAccent);
   const addFolder = useSettingsStore((s) => s.addFolder);
   const removeFolder = useSettingsStore((s) => s.removeFolder);
   const updateEqualizer = useSettingsStore((s) => s.updateEqualizer);
   const updateCrossfade = useSettingsStore((s) => s.updateCrossfade);
+  const setPlaybackRate = useSettingsStore((s) => s.setPlaybackRate);
 
   const [activeTab, setActiveTab] = useState<SettingsTabId>("audio");
   const [folderInput, setFolderInput] = useState("");
@@ -161,7 +250,7 @@ export function SettingsDialog() {
     >
       {/* SettingsDialog.kt: widthIn(min=780dp, max=960dp), fillMaxHeight(0.88f), RoundedCornerShape(24dp) */}
       <div
-        className="w-[min(940px,calc(100vw-48px))] h-[88vh] max-h-[700px] rounded-[24px] flex overflow-hidden adaptive-transition"
+        className="w-[min(960px,calc(100vw-48px))] md:min-w-[780px] h-[min(88vh,760px)] rounded-[24px] flex overflow-hidden adaptive-transition"
         style={{
           backgroundColor: "var(--surface-1)",
           color: "var(--text-primary)",
@@ -169,9 +258,9 @@ export function SettingsDialog() {
           boxShadow: "var(--shadow-elevated)",
         }}
       >
-        {/* Left Sidebar Navigation (252px so "Appearance & System" fits without truncation) */}
+        {/* Left Sidebar Navigation (244px so "Appearance & System" fits without truncation) */}
         <aside
-          className="w-[252px] shrink-0 flex flex-col p-4 gap-1.5 border-r"
+          className="w-[244px] shrink-0 flex flex-col p-4 gap-1.5 border-r"
           style={{
             backgroundColor: "color-mix(in srgb, var(--surface-2) 65%, var(--surface-1))",
             borderColor: "var(--outline)",
@@ -257,26 +346,38 @@ export function SettingsDialog() {
                       Active preset: {settings.equalizer.presetName || "Custom"}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => openDialog("equalizer")}
-                      className="px-4 py-2 rounded-full text-xs font-semibold cursor-pointer"
-                      style={{
-                        backgroundColor: "var(--accent-container)",
-                        color: "var(--on-accent-container)",
-                      }}
+                  <M3Switch
+                    checked={settings.equalizer.enabled}
+                    onChange={(enabled) =>
+                      void updateEqualizer({ ...settings.equalizer, enabled })
+                    }
+                    label="Toggle 10-Band Equalizer"
+                  />
+                </div>
+
+                {/* Playback Speed */}
+                <div
+                  className="p-[18px] rounded-2xl space-y-2"
+                  style={{ backgroundColor: "var(--surface-2)" }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-bold">Playback Speed</span>
+                    <span
+                      className="text-base font-bold tabular-nums"
+                      style={{ color: "var(--accent)" }}
                     >
-                      Open Equalizer
-                    </button>
-                    <M3Switch
-                      checked={settings.equalizer.enabled}
-                      onChange={(enabled) =>
-                        void updateEqualizer({ ...settings.equalizer, enabled })
-                      }
-                      label="Toggle 10-Band Equalizer"
-                    />
+                      {playbackRate.toFixed(2)}x
+                    </span>
                   </div>
+
+                  <SteppedSlider
+                    min={0.5}
+                    max={2.0}
+                    step={0.1}
+                    value={playbackRate}
+                    onChange={(nextRate) => void setPlaybackRate(nextRate)}
+                    ariaLabel="Playback Speed"
+                  />
                 </div>
 
                 {/* Crossfade & Gapless Transitions */}
@@ -288,31 +389,27 @@ export function SettingsDialog() {
                     <span className="text-base font-bold">
                       Crossfade &amp; Gapless Transitions
                     </span>
-                    <span className="text-base font-bold" style={{ color: "var(--accent)" }}>
+                    <span
+                      className="text-base font-bold tabular-nums"
+                      style={{ color: "var(--accent)" }}
+                    >
                       {isGapless ? "Gapless Lookahead" : `${crossfadeSeconds.toFixed(1)}s`}
                     </span>
                   </div>
 
-                  <input
-                    type="range"
+                  <SteppedSlider
                     min={0}
                     max={12}
                     step={0.5}
                     value={crossfadeSeconds}
-                    onChange={(e) => {
-                      const secs = Number(e.target.value);
+                    onChange={(secs) => {
                       void updateCrossfade({
                         enabled: secs > 0.05,
                         durationMs: Math.round(secs * 1000),
                         gapless: secs <= 0.05,
                       });
                     }}
-                    className="umimuko-slider w-full"
-                    style={{
-                      background: `linear-gradient(90deg, var(--accent) ${(crossfadeSeconds / 12) * 100}%, var(--surface-3) ${(crossfadeSeconds / 12) * 100}%)`,
-                      height: 4,
-                      borderRadius: 999,
-                    }}
+                    ariaLabel="Crossfade Duration"
                   />
 
                   <div className="flex items-center gap-2 pt-1">
@@ -388,31 +485,18 @@ export function SettingsDialog() {
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <span className="text-base font-bold">Monitored Music Folders</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void scanFolders()}
-                      className="px-3.5 py-2 rounded-full text-xs font-medium cursor-pointer"
-                      style={{
-                        backgroundColor: "var(--surface-2)",
-                        color: "var(--text-primary)",
-                      }}
-                    >
-                      Rescan Now
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleBrowseFolder()}
-                      className="px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                      style={{
-                        backgroundColor: "var(--accent)",
-                        color: "var(--on-accent)",
-                      }}
-                    >
-                      <Icon name="add" size={18} />
-                      <span>Add Folder</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleBrowseFolder()}
+                    className="px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    style={{
+                      backgroundColor: "var(--accent)",
+                      color: "var(--on-accent)",
+                    }}
+                  >
+                    <Icon name="add" size={18} />
+                    <span>Add Folder</span>
+                  </button>
                 </div>
 
                 {!isTauriRuntime() && (
@@ -709,26 +793,6 @@ export function SettingsDialog() {
 
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-medium">Dynamic Album Colors</div>
-                    <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                      Tint surfaces and accents from the playing track&apos;s artwork
-                    </div>
-                  </div>
-                  <M3Switch
-                    checked={settings.adaptiveAccent}
-                    onChange={(enabled) => {
-                      if (enabled) {
-                        setSelectedPresetId("dynamic");
-                        setStoredThemePresetId("dynamic");
-                      }
-                      void setAdaptiveAccent(enabled);
-                    }}
-                    label="Dynamic Album Colors"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <div>
                     <div className="text-sm font-medium">Startup Intro Animation</div>
                     <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
                       Fluid greeting animation when the app launches
@@ -765,17 +829,22 @@ export function SettingsDialog() {
 
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">Close to Mini Player</div>
+                    <div className="text-sm font-medium">Close to System Tray</div>
                     <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                      Keeps the music player running in the floating mini player on close
+                      Keeps the music player running in the background when the close button (X) is
+                      clicked
                     </div>
                   </div>
                   <M3Switch
-                    checked={settings.showMiniPlayerOnClose}
-                    onChange={(showMiniPlayerOnClose) =>
-                      void saveSettings({ ...settings, showMiniPlayerOnClose })
+                    checked={settings.closeToTray ?? settings.showMiniPlayerOnClose}
+                    onChange={(closeToTray) =>
+                      void saveSettings({
+                        ...settings,
+                        closeToTray,
+                        showMiniPlayerOnClose: closeToTray,
+                      })
                     }
-                    label="Close to Mini Player"
+                    label="Close to System Tray"
                   />
                 </div>
               </>
@@ -821,17 +890,7 @@ export function SettingsDialog() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-base font-bold">Top Played Tracks</span>
-                  <button
-                    type="button"
-                    onClick={() => openDialog("stats")}
-                    className="text-xs font-semibold cursor-pointer hover:underline"
-                    style={{ color: "var(--accent)" }}
-                  >
-                    Detailed Breakdown
-                  </button>
-                </div>
+                <div className="text-base font-bold pt-2">Top Played Tracks</div>
 
                 {!stats || stats.topTracks.length === 0 ? (
                   <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
@@ -884,11 +943,10 @@ export function SettingsDialog() {
 
             {activeTab === "about" && (
               <div className="flex flex-col items-center text-center gap-4 pt-2">
-                <img
+                <TintedMaskIcon
                   src={appIconUrl}
                   alt="Umimuko Music"
-                  className="w-16 h-16 object-contain app-brand-icon"
-                  draggable={false}
+                  className="w-16 h-16 shrink-0"
                 />
                 <div className="space-y-1">
                   <h3 className="text-[28px] leading-9 font-bold">Umimuko Music</h3>
@@ -918,11 +976,10 @@ export function SettingsDialog() {
                   className="inline-flex items-center gap-2 text-sm font-medium hover:underline"
                   style={{ color: "var(--accent)" }}
                 >
-                  <img
+                  <TintedMaskIcon
                     src={githubIconUrl}
                     alt="GitHub"
-                    className="w-[18px] h-[18px] object-contain app-brand-icon"
-                    draggable={false}
+                    className="w-[18px] h-[18px] shrink-0"
                   />
                   <span>github.com/real-Phraser/Umimuko-Music</span>
                 </a>

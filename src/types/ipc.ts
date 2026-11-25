@@ -178,6 +178,7 @@ export interface AppSettings {
   keybindings: KeybindingsConfig;
   minimizeToTray: boolean;
   showMiniPlayerOnClose: boolean;
+  closeToTray?: boolean;
 }
 
 export interface LibraryScanProgress {
