@@ -360,11 +360,37 @@ function ensureContrast(
   return contrastRatio(fg, bg) >= minRatio ? fg : fallback;
 }
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const theme = useSettingsStore((s) => s.settings.theme);
-  const adaptiveAccent = useSettingsStore((s) => s.settings.adaptiveAccent);
-  const trackAccent = usePlayerStore((s) => s.playback.currentTrack?.accentColor ?? null);
-  const [resolvedMode, setResolvedMode] = useState<"dark" | "light">("dark");
+export interface FullPlayerAmbientColors {
+  glowAccent: string;
+  glowBase: string;
+  deepBackground: string;
+}
+
+export function getFixedPresetPalette(presetId: string): FixedPresetPalette | undefined {
+  return FIXED_PRESET_PALETTES[presetId];
+}
+
+/** Port of ThemeManager.kt resolveFullPlayerAmbientColors */
+export function resolveFullPlayerAmbientColors(
+  coverAccent: string | null | undefined,
+  presetId: string = getStoredThemePresetId()
+): FullPlayerAmbientColors {
+  const fixed = FIXED_PRESET_PALETTES[presetId];
+  if (!fixed) {
+    return {
+      glowAccent: coverAccent || "#2166C2",
+      glowBase: "#14171E",
+      deepBackground: "#0F1117",
+    };
+  }
+  return {
+    glowAccent: fixed.primary,
+    glowBase: fixed.surface,
+    deepBackground: fixed.background,
+  };
+}
+
+export function useThemePresetId(): string {
   const [presetId, setPresetId] = useState<string>(getStoredThemePresetId);
 
   useEffect(() => {
@@ -384,6 +410,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("storage", onStorage);
     };
   }, []);
+
+  return presetId;
+}
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const theme = useSettingsStore((s) => s.settings.theme);
+  const adaptiveAccent = useSettingsStore((s) => s.settings.adaptiveAccent);
+  const trackAccent = usePlayerStore((s) => s.playback.currentTrack?.accentColor ?? null);
+  const [resolvedMode, setResolvedMode] = useState<"dark" | "light">("dark");
+  const presetId = useThemePresetId();
 
   // Resolve light/dark mode
   useEffect(() => {
