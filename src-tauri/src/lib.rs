@@ -7,8 +7,9 @@ pub mod os;
 use crate::audio::engine::{AudioEngine, AudioEvent, PlaybackStatus};
 use crate::audio::queue::RepeatMode;
 use crate::commands::{
-    apply_crossfade_to_engine, apply_eq_to_engine, build_queue_dto, load_app_settings,
-    sleep_remaining_ms, state_event_to_playback_dto, AppState, PlaybackTickPayload, QueueCache,
+    apply_crossfade_to_engine, apply_eq_to_engine, apply_playback_rate_to_engine, build_queue_dto,
+    load_app_settings, sleep_remaining_ms, state_event_to_playback_dto, AppState,
+    PlaybackTickPayload, QueueCache,
 };
 use crate::library::db::{app_data_dir, Database};
 use crate::library::migration::migrate_legacy_v0261;
@@ -17,7 +18,52 @@ use crate::os::media_session::{MediaSession, MediaSessionEvent};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, Manager};
+use tauri::menu::{MenuBuilder, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, WindowEvent, Wry};
+
+struct TrayHandles {
+    tray: TrayIcon<Wry>,
+    track_item: MenuItem<Wry>,
+    play_pause_item: MenuItem<Wry>,
+    next_item: MenuItem<Wry>,
+    prev_item: MenuItem<Wry>,
+    mute_item: MenuItem<Wry>,
+    toggle_window_item: MenuItem<Wry>,
+}
+
+fn load_tray_icon() -> Option<tauri::image::Image<'static>> {
+    let img = image::load_from_memory(include_bytes!("../icons/umimuko.png")).ok()?;
+    let rgba = img.into_rgba8();
+    let (width, height) = rgba.dimensions();
+    Some(tauri::image::Image::new_owned(rgba.into_raw(), width, height))
+}
+
+fn restore_main_window(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        if let Some(tray) = app.try_state::<TrayHandles>() {
+            let _ = tray.toggle_window_item.set_text("Hide Window");
+        }
+    }
+}
+
+fn queue_nav_availability(
+    len: usize,
+    current_index: Option<usize>,
+    repeat_mode: RepeatMode,
+) -> (bool, bool) {
+    if len == 0 {
+        return (false, false);
+    }
+    let has_next = repeat_mode != RepeatMode::Off
+        || current_index.map(|i| i + 1 < len).unwrap_or(false);
+    let has_prev = repeat_mode != RepeatMode::Off
+        || current_index.map(|i| i > 0).unwrap_or(false);
+    (has_next, has_prev)
+}
 
 fn unix_now_ms() -> i64 {
     SystemTime::now()
@@ -106,6 +152,7 @@ pub fn run() {
                         let ms_for_main = Arc::clone(&ms_ev);
                         let last_ms_for_main = Arc::clone(&last_media_track_id);
                         let track_for_main = track.clone();
+                        let app_for_tray = app_handle.clone();
                         let _ = app_handle.run_on_main_thread(move || {
                             if let Ok(mut ms_guard) = ms_for_main.lock() {
                                 if let Some(ref mut ms) = *ms_guard {
@@ -127,6 +174,35 @@ pub fn run() {
                                     }
                                     let _ = ms.set_playback(status, Some(position_ms));
                                 }
+                            }
+                            if let Some(tray) = app_for_tray.try_state::<TrayHandles>() {
+                                let (track_label, tooltip) = match track_for_main {
+                                    Some(ref tr) => (
+                                        format!("{} - {}", tr.title, tr.artist),
+                                        format!("Umimuko Music • {} - {}", tr.title, tr.artist),
+                                    ),
+                                    None => (
+                                        "Umimuko Music".to_string(),
+                                        "Umimuko Music".to_string(),
+                                    ),
+                                };
+                                let _ = tray.track_item.set_text(&track_label);
+                                let _ = tray.tray.set_tooltip(Some(&tooltip));
+                                let _ = tray.play_pause_item.set_text(
+                                    if status == PlaybackStatus::Playing {
+                                        "Pause"
+                                    } else {
+                                        "Play"
+                                    },
+                                );
+                                let _ = tray
+                                    .play_pause_item
+                                    .set_enabled(track_for_main.is_some());
+                                let _ = tray.mute_item.set_text(if muted || volume == 0 {
+                                    "Unmute"
+                                } else {
+                                    "Mute"
+                                });
                             }
                         });
                     }
@@ -159,6 +235,8 @@ pub fn run() {
                     repeat_mode,
                     shuffled,
                 } => {
+                    let (has_next, has_prev) =
+                        queue_nav_availability(tracks.len(), current_index, repeat_mode);
                     {
                         let mut qc = qc_ev.lock().unwrap_or_else(|e| e.into_inner());
                         qc.tracks = tracks.clone();
@@ -166,6 +244,13 @@ pub fn run() {
                         qc.repeat_mode = repeat_mode;
                         qc.shuffled = shuffled;
                     }
+                    let app_for_tray = app_handle.clone();
+                    let _ = app_handle.run_on_main_thread(move || {
+                        if let Some(tray) = app_for_tray.try_state::<TrayHandles>() {
+                            let _ = tray.next_item.set_enabled(has_next);
+                            let _ = tray.prev_item.set_enabled(has_prev);
+                        }
+                    });
                     let dto = {
                         let db = db_ev.lock().unwrap_or_else(|e| e.into_inner());
                         build_queue_dto(&db, &tracks, current_index, shuffled, repeat_mode)
@@ -180,6 +265,7 @@ pub fn run() {
                 Ok(eng) => {
                     apply_eq_to_engine(&eng, &initial_settings.equalizer);
                     apply_crossfade_to_engine(&eng, &initial_settings.crossfade);
+                    apply_playback_rate_to_engine(&eng, initial_settings.playback_rate);
                     Some(Arc::new(eng))
                 }
                 Err(err) => {
@@ -288,7 +374,156 @@ pub fn run() {
                 queue_cache,
             });
 
+            // System Tray matching Main.kt
+            let track_item = MenuItem::with_id(app, "tray_track", "Umimuko Music", false, None::<&str>)?;
+            let play_pause_item = MenuItem::with_id(app, "tray_play_pause", "Play", false, None::<&str>)?;
+            let next_item = MenuItem::with_id(app, "tray_next", "Next", false, None::<&str>)?;
+            let prev_item = MenuItem::with_id(app, "tray_prev", "Previous", false, None::<&str>)?;
+            let mute_item = MenuItem::with_id(app, "tray_mute", "Mute", true, None::<&str>)?;
+            let toggle_window_item =
+                MenuItem::with_id(app, "tray_toggle_window", "Hide Window", true, None::<&str>)?;
+            let quit_item =
+                MenuItem::with_id(app, "tray_quit", "Quit Umimuko Music", true, None::<&str>)?;
+
+            let tray_menu = MenuBuilder::new(app)
+                .item(&track_item)
+                .separator()
+                .item(&play_pause_item)
+                .item(&next_item)
+                .item(&prev_item)
+                .separator()
+                .item(&mute_item)
+                .separator()
+                .item(&toggle_window_item)
+                .item(&quit_item)
+                .build()?;
+
+            let last_unmuted_vol = Arc::new(Mutex::new(80_u8));
+            let mut tray_builder = TrayIconBuilder::with_id("main-tray")
+                .menu(&tray_menu)
+                .tooltip("Umimuko Music")
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        restore_main_window(tray.app_handle());
+                    }
+                })
+                .on_menu_event(move |app, event| {
+                    let state = app.state::<AppState>();
+                    match event.id().as_ref() {
+                        "tray_play_pause" => {
+                            if let Some(ref eng) = state.engine {
+                                eng.toggle_play_pause();
+                            }
+                        }
+                        "tray_next" => {
+                            if let Some(ref eng) = state.engine {
+                                eng.next();
+                            }
+                        }
+                        "tray_prev" => {
+                            if let Some(ref eng) = state.engine {
+                                eng.prev();
+                            }
+                        }
+                        "tray_mute" => {
+                            if let Some(ref eng) = state.engine {
+                                let snap = eng.snapshot();
+                                if snap.muted || snap.volume == 0 {
+                                    eng.set_muted(false);
+                                    if snap.volume == 0 {
+                                        let restore_vol = *last_unmuted_vol
+                                            .lock()
+                                            .unwrap_or_else(|e| e.into_inner());
+                                        eng.set_volume(restore_vol.clamp(5, 100));
+                                    }
+                                } else {
+                                    *last_unmuted_vol
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner()) = snap.volume;
+                                    eng.set_muted(true);
+                                }
+                            }
+                        }
+                        "tray_toggle_window" => {
+                            if let Some(win) = app.get_webview_window("main") {
+                                if win.is_visible().unwrap_or(true) {
+                                    let _ = win.hide();
+                                    if let Some(tray) = app.try_state::<TrayHandles>() {
+                                        let _ = tray.toggle_window_item.set_text("Show Window");
+                                    }
+                                } else {
+                                    restore_main_window(app);
+                                }
+                            }
+                        }
+                        "tray_quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                });
+
+            if let Some(icon) = load_tray_icon() {
+                tray_builder = tray_builder.icon(icon);
+            } else if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            }
+
+            let tray = tray_builder.build(app)?;
+            app.manage(TrayHandles {
+                tray,
+                track_item,
+                play_pause_item,
+                next_item,
+                prev_item,
+                mute_item,
+                toggle_window_item,
+            });
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            match event {
+                WindowEvent::CloseRequested { api, .. } => {
+                    let close_to_tray = {
+                        let state = window.state::<AppState>();
+                        let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
+                        load_app_settings(&db).close_to_tray
+                    };
+                    if close_to_tray {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        if let Some(tray) = window.app_handle().try_state::<TrayHandles>() {
+                            let _ = tray.toggle_window_item.set_text("Show Window");
+                        }
+                    }
+                }
+                WindowEvent::Resized(_) => {
+                    if window.is_minimized().unwrap_or(false) {
+                        let minimize_to_tray = {
+                            let state = window.state::<AppState>();
+                            let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
+                            load_app_settings(&db).minimize_to_tray
+                        };
+                        if minimize_to_tray {
+                            let _ = window.hide();
+                            if let Some(tray) = window.app_handle().try_state::<TrayHandles>() {
+                                let _ = tray.toggle_window_item.set_text("Show Window");
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_tracks,

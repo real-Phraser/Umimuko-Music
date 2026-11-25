@@ -4,6 +4,38 @@ import { useLibraryStore } from "../../store/useLibraryStore";
 import { Icon } from "../Icon";
 import { DialogShell } from "./DialogShell";
 
+function M3OutlinedField({
+  label,
+  value,
+  onChange,
+  numeric = false,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  numeric?: boolean;
+  className?: string;
+}) {
+  return (
+    <label className={`block space-y-1 ${className}`}>
+      <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+        {label}
+      </span>
+      <input
+        type="text"
+        inputMode={numeric ? "numeric" : "text"}
+        value={value}
+        onChange={(e) =>
+          onChange(numeric ? e.target.value.replace(/\D/g, "") : e.target.value)
+        }
+        className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none border border-[var(--outline-strong)] focus:border-[var(--accent)] transition-colors"
+        style={{ backgroundColor: "var(--surface-0)" }}
+      />
+    </label>
+  );
+}
+
 export function TagEditorDialog() {
   const track = useLibraryStore((s) => s.tagEditorTrack);
   const openTagEditor = useLibraryStore((s) => s.openTagEditor);
@@ -68,10 +100,10 @@ export function TagEditorDialog() {
       title="Edit Track Tags"
       subtitle={track.path}
       onClose={() => openTagEditor(null)}
-      maxWidth="max-w-[740px]"
+      maxWidth="max-w-[760px]"
       headerRight={
         <span
-          className="px-2.5 py-1 rounded-lg text-xs font-medium"
+          className="px-2.5 py-1 rounded-[8px] text-xs font-medium"
           style={{
             backgroundColor: "var(--accent-container)",
             color: "var(--accent)",
@@ -122,119 +154,37 @@ export function TagEditorDialog() {
         <div className="h-px" style={{ backgroundColor: "var(--outline)" }} />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block space-y-1 sm:col-span-2">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Title
-            </span>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: "var(--surface-0)",
-                border: "1px solid var(--outline-strong)",
-              }}
-            />
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Artist
-            </span>
-            <input
-              type="text"
-              value={artist}
-              onChange={(e) => setArtist(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: "var(--surface-0)",
-                border: "1px solid var(--outline-strong)",
-              }}
-            />
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Album Artist
-            </span>
-            <input
-              type="text"
-              value={albumArtist}
-              onChange={(e) => setAlbumArtist(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: "var(--surface-0)",
-                border: "1px solid var(--outline-strong)",
-              }}
-            />
-          </label>
-
-          <label className="block space-y-1 sm:col-span-2">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Album
-            </span>
-            <input
-              type="text"
-              value={album}
-              onChange={(e) => setAlbum(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: "var(--surface-0)",
-                border: "1px solid var(--outline-strong)",
-              }}
-            />
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Release Year
-            </span>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={year}
-              onChange={(e) => setYear(e.target.value.replace(/\D/g, ""))}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: "var(--surface-0)",
-                border: "1px solid var(--outline-strong)",
-              }}
-            />
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Genre
-            </span>
-            <input
-              type="text"
-              value={genre}
-              onChange={(e) => setGenre(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: "var(--surface-0)",
-                border: "1px solid var(--outline-strong)",
-              }}
-            />
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              Track #
-            </span>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={trackNum}
-              onChange={(e) => setTrackNum(e.target.value.replace(/\D/g, ""))}
-              className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: "var(--surface-0)",
-                border: "1px solid var(--outline-strong)",
-              }}
-            />
-          </label>
+          <M3OutlinedField
+            label="Title"
+            value={title}
+            onChange={setTitle}
+            className="sm:col-span-2"
+          />
+          <M3OutlinedField label="Artist" value={artist} onChange={setArtist} />
+          <M3OutlinedField
+            label="Album Artist"
+            value={albumArtist}
+            onChange={setAlbumArtist}
+          />
+          <M3OutlinedField
+            label="Album"
+            value={album}
+            onChange={setAlbum}
+            className="sm:col-span-2"
+          />
+          <M3OutlinedField
+            label="Release Year"
+            value={year}
+            onChange={setYear}
+            numeric
+          />
+          <M3OutlinedField label="Genre" value={genre} onChange={setGenre} />
+          <M3OutlinedField
+            label="Track #"
+            value={trackNum}
+            onChange={setTrackNum}
+            numeric
+          />
         </div>
 
         <div className="pt-2 flex justify-end gap-3">
@@ -242,14 +192,15 @@ export function TagEditorDialog() {
             type="button"
             disabled={saving}
             onClick={() => openTagEditor(null)}
-            className="px-4 py-2 rounded-full text-sm cursor-pointer hover:bg-[var(--surface-variant)]"
+            className="h-10 px-4 rounded-full text-sm font-medium cursor-pointer hover:bg-[var(--surface-variant)] transition-colors"
+            style={{ color: "var(--accent)" }}
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving || !title.trim()}
-            className="px-5 py-2 rounded-full text-sm font-medium cursor-pointer disabled:opacity-45"
+            className="h-10 px-5 rounded-full text-sm font-medium cursor-pointer disabled:opacity-45 transition-opacity hover:opacity-90"
             style={{
               backgroundColor: "var(--accent)",
               color: "var(--on-accent)",

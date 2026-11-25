@@ -3,6 +3,11 @@ import { resolveArtworkUrl } from "../api/tauri";
 import appIconUrl from "../assets/branding/app-icon.png";
 import { useLibraryStore } from "../store/useLibraryStore";
 import { usePlayerStore } from "../store/usePlayerStore";
+import {
+  getFixedPresetPalette,
+  resolveFullPlayerAmbientColors,
+  useThemePresetId,
+} from "../theme/ThemeProvider";
 import { formatDuration } from "../utils/format";
 import { Icon } from "./Icon";
 import { SpicyLyricsView } from "./lyrics/SpicyLyricsView";
@@ -98,7 +103,14 @@ function relativeLuminance([r, g, b]: [number, number, number]): number {
 }
 
 /** AlbumTheme.kt fullPlayerColorScheme + ThemeManager.kt FullPlayerAmbientColors */
-function computeFullPlayerPalette(accentHex: string | null | undefined) {
+function computeFullPlayerPalette(
+  accentHex: string | null | undefined,
+  presetId: string
+) {
+  const fixed = getFixedPresetPalette(presetId);
+  const ambientColors = resolveFullPlayerAmbientColors(accentHex, presetId);
+  const isDark = fixed ? fixed.mode === "dark" : true;
+
   const seedRgb = hexToRgb(accentHex) ?? [33, 102, 194]; // 0xFF2166C2
   const [h, s] = rgbToHsv(seedRgb[0], seedRgb[1], seedRgb[2]);
 
@@ -108,43 +120,64 @@ function computeFullPlayerPalette(accentHex: string | null | undefined) {
   const originalVariant = hsvToRgb(h, neutralSat, 0.17);
 
   // fullPlayerColorScheme: quieter muted ice-blue/accent blend (#B6C4DA -> primary 38%)
-  const fpPrimary = lerpRgb([182, 196, 218], originalPrimary, 0.38);
-  const fpOnPrimary: [number, number, number] =
-    relativeLuminance(fpPrimary) > 0.38 ? [15, 17, 23] : [255, 255, 255];
-  const fpContainer = lerpRgb([42, 48, 58], originalContainer, 0.3);
-  const fpOnContainer: [number, number, number] =
-    relativeLuminance(fpContainer) > 0.4 ? [20, 23, 30] : [245, 247, 250];
+  const fpPrimary: [number, number, number] = fixed
+    ? hexToRgb(fixed.primary)!
+    : lerpRgb([182, 196, 218], originalPrimary, 0.38);
+  const fpOnPrimary: [number, number, number] = fixed
+    ? hexToRgb(fixed.onPrimary)!
+    : relativeLuminance(fpPrimary) > 0.38
+      ? [15, 17, 23]
+      : [255, 255, 255];
+  const fpContainer: [number, number, number] = fixed
+    ? hexToRgb(fixed.container)!
+    : lerpRgb([42, 48, 58], originalContainer, 0.3);
+  const fpOnContainer: [number, number, number] = fixed
+    ? hexToRgb(fixed.onContainer)!
+    : relativeLuminance(fpContainer) > 0.4
+      ? [20, 23, 30]
+      : [245, 247, 250];
 
-  const deepBg: [number, number, number] = [15, 17, 23]; // #0F1117
-  const glowBase: [number, number, number] = [20, 23, 30]; // #14171E
-  const glowAccent = seedRgb;
+  const deepBg = hexToRgb(ambientColors.deepBackground) ?? [15, 17, 23];
+  const glowBase = hexToRgb(ambientColors.glowBase) ?? [20, 23, 30];
+  const glowAccent = hexToRgb(ambientColors.glowAccent) ?? seedRgb;
+  const variantRgb = fixed ? (hexToRgb(fixed.variant) ?? glowBase) : originalVariant;
 
-  const primaryWash = lerpRgb(glowBase, glowAccent, 0.28);
-  const secondaryWash = lerpRgb(glowBase, fpPrimary, 0.25);
-  const tertiaryWash = lerpRgb(deepBg, originalVariant, 0.24);
-  const bridgeWash = lerpRgb(glowBase, glowAccent, 0.22);
+  const primaryGlowMin = lerpRgb(glowBase, glowAccent, 0.22);
+  const primaryGlowMax = lerpRgb(glowBase, glowAccent, 0.38);
+
+  const primaryWash = lerpRgb(glowBase, glowAccent, 0.32);
+  const secondaryWash = lerpRgb(glowBase, fpPrimary, 0.28);
+  const tertiaryWash = lerpRgb(deepBg, variantRgb, 0.26);
+  const bridgeWash = lerpRgb(glowBase, glowAccent, 0.24);
 
   return {
+    isDynamic: !fixed,
+    isDark,
     fpPrimary: rgbStr(fpPrimary),
     fpOnPrimary: rgbStr(fpOnPrimary),
     fpContainer: rgbStr(fpContainer),
     fpContainerAlpha85: rgbStr(fpContainer, 0.85),
     fpOnContainer: rgbStr(fpOnContainer),
-    onBackground: "#F5F7FA",
-    onSurfaceVariant: "rgba(245, 247, 250, 0.68)",
+    onBackground: fixed ? fixed.onSurface : "#F5F7FA",
+    onSurfaceVariant: fixed ? fixed.onSurfaceVariant : "rgba(245, 247, 250, 0.68)",
+    trackBg: isDark ? "rgba(245, 247, 250, 0.2)" : "rgba(32, 33, 36, 0.18)",
     deepBg: rgbStr(deepBg),
     glowBase: rgbStr(glowBase),
+    primaryGlowMin: rgbStr(primaryGlowMin, isDark ? 0.72 : 0.42),
+    primaryGlowMax: rgbStr(primaryGlowMax, isDark ? 0.92 : 0.6),
+    primaryGlowMaxMid: rgbStr(primaryGlowMax, isDark ? 0.44 : 0.25),
+    scrim: `linear-gradient(180deg, ${rgbStr(deepBg, 0.52)} 0%, ${rgbStr(deepBg, 0.36)} 50%, ${rgbStr(deepBg, 0.58)} 100%)`,
     diagStart: rgbStr(lerpRgb(deepBg, glowBase, 0.75)),
     diagEnd: rgbStr(lerpRgb(deepBg, glowAccent, 0.16)),
-    primaryWash: rgbStr(primaryWash, 0.56),
-    primaryWashMid: rgbStr(primaryWash, 0.24),
-    secondaryWash: rgbStr(secondaryWash, 0.5),
-    secondaryWashMid: rgbStr(secondaryWash, 0.21),
-    tertiaryWash: rgbStr(tertiaryWash, 0.44),
-    tertiaryWashMid: rgbStr(tertiaryWash, 0.18),
-    bridgeWash: rgbStr(bridgeWash, 0.42),
-    bridgeWashMid: rgbStr(bridgeWash, 0.17),
-    variantBg: rgbStr(originalVariant),
+    primaryWash: rgbStr(primaryWash, isDark ? 0.62 : 0.38),
+    primaryWashMid: rgbStr(primaryWash, isDark ? 0.26 : 0.16),
+    secondaryWash: rgbStr(secondaryWash, isDark ? 0.54 : 0.34),
+    secondaryWashMid: rgbStr(secondaryWash, isDark ? 0.22 : 0.14),
+    tertiaryWash: rgbStr(tertiaryWash, isDark ? 0.48 : 0.3),
+    tertiaryWashMid: rgbStr(tertiaryWash, isDark ? 0.19 : 0.12),
+    bridgeWash: rgbStr(bridgeWash, isDark ? 0.46 : 0.28),
+    bridgeWashMid: rgbStr(bridgeWash, isDark ? 0.18 : 0.11),
+    variantBg: rgbStr(variantRgb),
     activeArtBg: rgbStr(fpPrimary, 0.18),
   };
 }
@@ -251,6 +284,7 @@ function CompactProgress({
   enabled,
   label,
   accentColor,
+  trackColor = "rgba(245, 247, 250, 0.2)",
   onPreview,
   onCommit,
   className = "",
@@ -259,6 +293,7 @@ function CompactProgress({
   enabled: boolean;
   label: string;
   accentColor: string;
+  trackColor?: string;
   onPreview?: (fraction: number | null) => void;
   onCommit: (fraction: number) => void;
   className?: string;
@@ -344,7 +379,7 @@ function CompactProgress({
         className="relative w-full rounded-full transition-[height] duration-150"
         style={{
           height: thickness,
-          backgroundColor: "rgba(245, 247, 250, 0.2)",
+          backgroundColor: trackColor,
         }}
       >
         <div
@@ -435,10 +470,11 @@ export function FullPlayer() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [fullPlayerOpen, playlistMenuOpen, setFullPlayerOpen]);
 
+  const presetId = useThemePresetId();
   const track = playback.currentTrack;
   const palette = useMemo(
-    () => computeFullPlayerPalette(track?.accentColor),
-    [track?.accentColor]
+    () => computeFullPlayerPalette(track?.accentColor, presetId),
+    [track?.accentColor, presetId]
   );
 
   if (!fullPlayerOpen) return null;
@@ -522,6 +558,7 @@ export function FullPlayer() {
           enabled={Boolean(track) && duration > 0}
           label="Playback position"
           accentColor={palette.fpPrimary}
+          trackColor={palette.trackBg}
           onPreview={setPreviewFraction}
           onCommit={(f) => void seek(Math.round(f * duration))}
           className="flex-1"
@@ -779,6 +816,7 @@ export function FullPlayer() {
           enabled={Boolean(track) || true}
           label="Volume"
           accentColor={palette.fpPrimary}
+          trackColor={palette.trackBg}
           onCommit={(f) => void setVolume(f)}
           className="w-[140px] shrink-0"
         />
@@ -808,6 +846,39 @@ export function FullPlayer() {
         if (playlistMenuOpen) setPlaylistMenuOpen(false);
       }}
     >
+      <style>{`
+        @keyframes fp-ambient-pulse {
+          0% {
+            opacity: 0.35;
+            transform: scale(0.95);
+          }
+          100% {
+            opacity: 0.95;
+            transform: scale(1.08);
+          }
+        }
+        @keyframes fp-ambient-drift-a {
+          0% {
+            opacity: 0.78;
+            transform: translate3d(-2%, -2%, 0) scale(1);
+          }
+          100% {
+            opacity: 1;
+            transform: translate3d(2.5%, 2%, 0) scale(1.06);
+          }
+        }
+        @keyframes fp-ambient-drift-b {
+          0% {
+            opacity: 0.72;
+            transform: translate3d(2%, 1.5%, 0) scale(1.04);
+          }
+          100% {
+            opacity: 0.96;
+            transform: translate3d(-2.5%, -2%, 0) scale(0.98);
+          }
+        }
+      `}</style>
+
       {/* Multi-stop diagonal base wash */}
       <div
         className="absolute inset-0 pointer-events-none"
@@ -816,8 +887,8 @@ export function FullPlayer() {
         }}
       />
 
-      {/* Blurred, zoomed album cover texture + protective scrim */}
-      {coverUrl && (
+      {/* Blurred, zoomed album cover texture + protective scrim (dynamic preset only) */}
+      {palette.isDynamic && coverUrl && (
         <>
           <div
             className="absolute inset-0 pointer-events-none scale-[1.68] blur-[96px] opacity-[0.28]"
@@ -829,24 +900,48 @@ export function FullPlayer() {
           />
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(15,17,23,0.52) 0%, rgba(15,17,23,0.36) 50%, rgba(15,17,23,0.58) 100%)",
-            }}
+            style={{ background: palette.scrim }}
           />
         </>
       )}
 
-      {/* Overlapping elliptical ambient color washes */}
+      {/* Animated radial ambient glow (1-to-1 port of FullPlayerScreen.kt ambientPulse) */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `radial-gradient(circle at 50% 45%, ${palette.primaryGlowMin} 0%, transparent 72%)`,
+        }}
+      />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `radial-gradient(circle at 50% 45%, ${palette.primaryGlowMax} 0%, ${palette.primaryGlowMaxMid} 42%, transparent 75%)`,
+          animation: "fp-ambient-pulse 4s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate",
+          willChange: "transform, opacity",
+        }}
+      />
+
+      {/* Overlapping drifting elliptical ambient color washes */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           background: [
             `radial-gradient(ellipse 92% 48% at 22% 24%, ${palette.primaryWash} 0%, ${palette.primaryWashMid} 45%, transparent 100%)`,
             `radial-gradient(ellipse 88% 52% at 78% 74%, ${palette.secondaryWash} 0%, ${palette.secondaryWashMid} 45%, transparent 100%)`,
+          ].join(", "),
+          animation: "fp-ambient-drift-a 9s ease-in-out infinite alternate",
+          willChange: "transform, opacity",
+        }}
+      />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: [
             `radial-gradient(ellipse 75% 44% at 72% 22%, ${palette.tertiaryWash} 0%, ${palette.tertiaryWashMid} 45%, transparent 100%)`,
             `radial-gradient(ellipse 90% 42% at 30% 76%, ${palette.bridgeWash} 0%, ${palette.bridgeWashMid} 45%, transparent 100%)`,
           ].join(", "),
+          animation: "fp-ambient-drift-b 12s ease-in-out infinite alternate",
+          willChange: "transform, opacity",
         }}
       />
 
