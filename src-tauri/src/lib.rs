@@ -1,3 +1,6 @@
+pub mod library;
+pub mod lyrics;
+
 #[tauri::command]
 fn ping() -> &'static str {
     "pong"
