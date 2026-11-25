@@ -28,6 +28,8 @@ export function StatsDialog() {
     <DialogShell
       title="Listening Stats"
       subtitle="Your playback history & top favorites"
+      icon="queue"
+      maxWidth="max-w-[740px]"
       onClose={() => openDialog(null)}
     >
       {loading || !stats ? (

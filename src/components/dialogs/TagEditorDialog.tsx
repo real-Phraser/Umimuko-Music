@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLibraryStore } from "../../store/useLibraryStore";
+import { Artwork } from "../Artwork";
 import { DialogShell } from "./DialogShell";
 
 export function TagEditorDialog() {
@@ -29,6 +30,8 @@ export function TagEditorDialog() {
 
   if (!track) return null;
 
+  const ext = track.path.split(".").pop()?.toUpperCase() || "AUDIO";
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -53,36 +56,78 @@ export function TagEditorDialog() {
       title="Edit Track Tags"
       subtitle={track.path}
       onClose={() => openTagEditor(null)}
-      maxWidth="max-w-lg"
+      maxWidth="max-w-[680px]"
+      headerRight={
+        <span
+          className="px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wide"
+          style={{
+            backgroundColor: "var(--accent-container)",
+            color: "var(--on-accent-container)",
+          }}
+        >
+          {ext}
+        </span>
+      }
     >
-      <form onSubmit={handleSubmit} className="space-y-3.5">
-        {[
-          { label: "Title", value: title, set: setTitle },
-          { label: "Artist", value: artist, set: setArtist },
-          { label: "Album", value: album, set: setAlbum },
-          { label: "Album Artist", value: albumArtist, set: setAlbumArtist },
-          { label: "Genre", value: genre, set: setGenre },
-        ].map((field) => (
-          <label key={field.label} className="block space-y-1">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-              {field.label}
-            </span>
-            <input
-              type="text"
-              value={field.value}
-              onChange={(e) => field.set(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl text-sm outline-none"
-              style={{
-                backgroundColor: "var(--surface-1)",
-                border: "1px solid var(--outline)",
-              }}
-            />
-          </label>
-        ))}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div
+          className="p-3.5 rounded-2xl flex items-center gap-4"
+          style={{
+            backgroundColor: "var(--surface-1)",
+            border: "1px solid var(--outline)",
+          }}
+        >
+          <Artwork
+            artworkPath={track.artworkPath}
+            accentColor={track.accentColor}
+            alt={track.title}
+            size="md"
+            rounded="rounded-2xl"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold truncate">{track.title}</div>
+            <div className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
+              {track.artist} • {track.album}
+            </div>
+          </div>
+        </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          {[
+            { label: "Title", value: title, set: setTitle, span: true },
+            { label: "Artist", value: artist, set: setArtist },
+            { label: "Album", value: album, set: setAlbum },
+            { label: "Album Artist", value: albumArtist, set: setAlbumArtist },
+            { label: "Genre", value: genre, set: setGenre },
+          ].map((field) => (
+            <label
+              key={field.label}
+              className={`block space-y-1 ${field.span ? "sm:col-span-2" : ""}`}
+            >
+              <span
+                className="text-xs font-medium"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                {field.label}
+              </span>
+              <input
+                type="text"
+                value={field.value}
+                onChange={(e) => field.set(e.target.value)}
+                className="w-full px-3.5 py-2 rounded-xl text-sm outline-none"
+                style={{
+                  backgroundColor: "var(--surface-1)",
+                  border: "1px solid var(--outline)",
+                }}
+              />
+            </label>
+          ))}
+
           <label className="block space-y-1">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+            <span
+              className="text-xs font-medium"
+              style={{ color: "var(--text-secondary)" }}
+            >
               Year
             </span>
             <input
@@ -97,7 +142,10 @@ export function TagEditorDialog() {
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+            <span
+              className="text-xs font-medium"
+              style={{ color: "var(--text-secondary)" }}
+            >
               Track #
             </span>
             <input

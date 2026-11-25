@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLibraryStore } from "../../store/useLibraryStore";
 import { usePlayerStore } from "../../store/usePlayerStore";
 import type { LyricLine } from "../../types/ipc";
 import { Icon } from "../Icon";
@@ -15,6 +16,7 @@ export function SpicyLyricsView() {
   const positionMs = usePlayerStore((s) => s.playback.positionMs);
   const seek = usePlayerStore((s) => s.seek);
   const refreshLyrics = usePlayerStore((s) => s.refreshLyrics);
+  const openDialog = useLibraryStore((s) => s.openDialog);
 
   const [interpolatedMs, setInterpolatedMs] = useState(positionMs);
   const anchorRef = useRef({ pos: positionMs, time: performance.now() });
@@ -59,7 +61,7 @@ export function SpicyLyricsView() {
   // Auto-scroll active line into center unless user recently scrolled manually
   useEffect(() => {
     if (activeLineIndex < 0) return;
-    if (performance.now() - userScrolledAtRef.current < 3500) return;
+    if (performance.now() - userScrolledAtRef.current < 4000) return;
     activeLineRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "center",
@@ -68,9 +70,11 @@ export function SpicyLyricsView() {
 
   if (lyricsLoading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-2 opacity-70">
-        <Icon name="lyrics" size={28} />
-        <div className="text-sm">Loading lyrics…</div>
+      <div className="h-full flex flex-col items-center justify-center gap-3 opacity-75">
+        <Icon name="lyrics" size={30} />
+        <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+          Fetching Spicy Lyrics…
+        </div>
       </div>
     );
   }
@@ -78,21 +82,37 @@ export function SpicyLyricsView() {
   if (!lyrics || lyrics.type === "none" || lyrics.lines.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
-        <Icon name="lyrics" size={34} className="opacity-40" />
-        <div className="text-sm font-medium">No lyrics available for this track</div>
-        {currentTrackId && (
+        <Icon name="lyrics" size={36} className="opacity-40" />
+        <div className="text-sm font-semibold">No lyrics available for this track</div>
+        <p className="text-xs max-w-xs" style={{ color: "var(--text-secondary)" }}>
+          Lyrics are fetched from embedded tags, local .lrc files, or SpicyLyrics.
+        </p>
+        <div className="flex items-center gap-2 mt-1">
+          {currentTrackId && (
+            <button
+              type="button"
+              onClick={() => void refreshLyrics(currentTrackId)}
+              className="px-4 py-1.5 rounded-full text-xs font-medium cursor-pointer"
+              style={{
+                backgroundColor: "var(--accent-container)",
+                color: "var(--on-accent-container)",
+              }}
+            >
+              Retry Fetch
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => void refreshLyrics(currentTrackId)}
+            onClick={() => openDialog("settings")}
             className="px-4 py-1.5 rounded-full text-xs font-medium cursor-pointer"
             style={{
-              backgroundColor: "var(--accent-container)",
-              color: "var(--on-accent-container)",
+              backgroundColor: "var(--surface-variant)",
+              color: "var(--text-primary)",
             }}
           >
-            Retry Fetch
+            Lyrics Settings
           </button>
-        )}
+        </div>
       </div>
     );
   }
@@ -105,7 +125,7 @@ export function SpicyLyricsView() {
       return (
         <div
           key={`${line.startMs}-${idx}`}
-          className="py-3 text-2xl font-bold tracking-widest transition-opacity duration-300"
+          className="py-3 px-3 text-2xl font-bold tracking-[0.25em] transition-opacity duration-300"
           style={{ opacity: isActive ? 0.95 : 0.3, color: "var(--accent)" }}
         >
           •••
@@ -128,7 +148,7 @@ export function SpicyLyricsView() {
         className="w-full text-left py-2.5 px-3 rounded-2xl transition-transform duration-300 origin-left cursor-pointer"
         style={{
           transform: isActive ? "scale(1.025)" : "scale(1)",
-          opacity: lyrics.type === "plain" ? 0.9 : isActive ? 1 : isPast ? 0.42 : 0.55,
+          opacity: lyrics.type === "plain" ? 0.9 : isActive ? 1 : isPast ? 0.38 : 0.52,
           willChange: "transform, opacity",
         }}
       >
@@ -179,31 +199,42 @@ export function SpicyLyricsView() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-3 pb-2">
-        <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-          {lyrics.source} • {lyrics.type === "syllable" ? "Word-Synced" : lyrics.type === "line" ? "Line-Synced" : "Plain"}
-        </span>
-        {currentTrackId && (
-          <button
-            type="button"
-            onClick={() => void refreshLyrics(currentTrackId)}
-            className="p-1.5 rounded-full hover:opacity-80 cursor-pointer"
-            style={{ color: "var(--text-secondary)" }}
-            title="Refresh lyrics"
-          >
-            <Icon name="restore" size={16} />
-          </button>
-        )}
-      </div>
-
       <div
         ref={containerRef}
         onWheel={() => {
           userScrolledAtRef.current = performance.now();
         }}
-        className="flex-1 overflow-y-auto px-2 py-8 space-y-2"
+        className="flex-1 overflow-y-auto px-2 py-12 space-y-2"
+        style={{
+          maskImage:
+            "linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)",
+          WebkitMaskImage:
+            "linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%)",
+        }}
       >
         {lyrics.lines.map(renderLine)}
+      </div>
+
+      <div className="flex items-center justify-between px-3 pt-2 opacity-70">
+        <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
+          {lyrics.source} •{" "}
+          {lyrics.type === "syllable"
+            ? "Word-Synced"
+            : lyrics.type === "line"
+              ? "Line-Synced"
+              : "Plain"}
+        </span>
+        {currentTrackId && (
+          <button
+            type="button"
+            onClick={() => void refreshLyrics(currentTrackId)}
+            className="p-1.5 rounded-full hover:bg-[var(--surface-variant)] cursor-pointer"
+            style={{ color: "var(--text-secondary)" }}
+            title="Refresh lyrics"
+          >
+            <Icon name="restore" size={15} />
+          </button>
+        )}
       </div>
     </div>
   );

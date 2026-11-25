@@ -18,6 +18,7 @@ export function EqualizerDialog() {
   const saveEqPreset = useSettingsStore((s) => s.saveEqPreset);
 
   const [presetInput, setPresetInput] = useState("");
+  const [saveOpen, setSaveOpen] = useState(false);
 
   if (activeDialog !== "equalizer") return null;
 
@@ -37,39 +38,57 @@ export function EqualizerDialog() {
     if (!name) return;
     await saveEqPreset(name);
     setPresetInput("");
+    setSaveOpen(false);
   };
 
   return (
     <DialogShell
-      title="10-Band Equalizer"
-      subtitle="Biquad peaking EQ with preamp gain"
+      title="Audio DSP & Equalizer"
+      subtitle="10-band hardware EQ, preamp gain, and preset curves"
+      icon="levels"
+      maxWidth="max-w-[780px]"
       onClose={() => openDialog(null)}
+      headerRight={
+        <label className="flex items-center gap-2 cursor-pointer mr-1">
+          <span
+            className="text-xs font-semibold"
+            style={{
+              color: equalizer.enabled ? "var(--accent)" : "var(--text-secondary)",
+            }}
+          >
+            {equalizer.enabled ? "EQ On" : "EQ Off"}
+          </span>
+          <input
+            type="checkbox"
+            checked={equalizer.enabled}
+            onChange={(e) =>
+              void updateEqualizer({ ...equalizer, enabled: e.target.checked })
+            }
+            className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
+          />
+        </label>
+      }
     >
-      <div className="space-y-6">
-        {/* Top Controls */}
+      <div className="space-y-5">
+        {/* Preset Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="flex items-center gap-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={equalizer.enabled}
-              onChange={(e) =>
-                void updateEqualizer({ ...equalizer, enabled: e.target.checked })
-              }
-              className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
-            />
-            <span className="text-sm font-medium">Enable Equalizer</span>
-          </label>
-
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span
+              className="text-xs font-semibold"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Preset:
+            </span>
             <select
               value={equalizer.presetName ?? ""}
+              disabled={!equalizer.enabled}
               onChange={(e) => {
                 const preset = eqPresets.find((p) => p.name === e.target.value);
                 if (preset) void applyEqPreset(preset);
               }}
-              className="px-3.5 py-1.5 rounded-full text-xs font-medium outline-none cursor-pointer"
+              className="px-3.5 py-1.5 rounded-full text-xs font-medium outline-none cursor-pointer disabled:opacity-50"
               style={{
-                backgroundColor: "var(--surface-3)",
+                backgroundColor: "var(--surface-1)",
                 border: "1px solid var(--outline)",
               }}
             >
@@ -85,24 +104,63 @@ export function EqualizerDialog() {
 
             <button
               type="button"
-              onClick={() =>
-                void updateEqualizer({
-                  ...equalizer,
-                  preampDb: 0,
-                  bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                  presetName: "Flat",
-                })
-              }
-              className="px-3.5 py-1.5 rounded-full text-xs font-medium cursor-pointer"
+              disabled={!equalizer.enabled}
+              onClick={() => setSaveOpen((v) => !v)}
+              className="px-3.5 py-1.5 rounded-full text-xs font-medium cursor-pointer disabled:opacity-50"
               style={{
-                backgroundColor: "var(--surface-3)",
-                color: "var(--text-secondary)",
+                backgroundColor: "var(--accent)",
+                color: "var(--on-accent)",
               }}
             >
-              Reset
+              Save Preset
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              void updateEqualizer({
+                ...equalizer,
+                preampDb: 0,
+                bands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                presetName: "Flat",
+              })
+            }
+            className="px-3.5 py-1.5 rounded-full text-xs font-medium cursor-pointer"
+            style={{
+              backgroundColor: "var(--surface-3)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            Reset
+          </button>
         </div>
+
+        {saveOpen && (
+          <form onSubmit={handleSavePreset} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={presetInput}
+              onChange={(e) => setPresetInput(e.target.value)}
+              placeholder="Preset name…"
+              className="flex-1 px-4 py-2 rounded-full text-sm outline-none"
+              style={{
+                backgroundColor: "var(--surface-1)",
+                border: "1px solid var(--outline)",
+              }}
+            />
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-full text-xs font-medium cursor-pointer"
+              style={{
+                backgroundColor: "var(--accent)",
+                color: "var(--on-accent)",
+              }}
+            >
+              Save
+            </button>
+          </form>
+        )}
 
         {/* Preamp */}
         <div
@@ -118,6 +176,7 @@ export function EqualizerDialog() {
             min={-12}
             max={12}
             step={0.5}
+            disabled={!equalizer.enabled}
             value={equalizer.preampDb}
             onChange={(e) =>
               void updateEqualizer({
@@ -133,12 +192,13 @@ export function EqualizerDialog() {
           </span>
         </div>
 
-        {/* 10 Bands */}
+        {/* 10-Band Vertical Sliders */}
         <div
           className="p-4 rounded-2xl grid grid-cols-5 sm:grid-cols-10 gap-3"
           style={{
             backgroundColor: "var(--surface-1)",
             border: "1px solid var(--outline)",
+            opacity: equalizer.enabled ? 1 : 0.55,
           }}
         >
           {EQ_FREQUENCIES.map((freq, idx) => {
@@ -154,6 +214,7 @@ export function EqualizerDialog() {
                     min={-12}
                     max={12}
                     step={0.5}
+                    disabled={!equalizer.enabled}
                     value={gain}
                     onChange={(e) => handleBandChange(idx, Number(e.target.value))}
                     className="umimuko-slider w-28 -rotate-90"
@@ -170,31 +231,6 @@ export function EqualizerDialog() {
             );
           })}
         </div>
-
-        {/* Save Custom Preset */}
-        <form onSubmit={handleSavePreset} className="flex items-center gap-2">
-          <input
-            type="text"
-            value={presetInput}
-            onChange={(e) => setPresetInput(e.target.value)}
-            placeholder="Save current curve as preset…"
-            className="flex-1 px-4 py-2 rounded-full text-sm outline-none"
-            style={{
-              backgroundColor: "var(--surface-1)",
-              border: "1px solid var(--outline)",
-            }}
-          />
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-full text-sm font-medium cursor-pointer"
-            style={{
-              backgroundColor: "var(--accent)",
-              color: "var(--on-accent)",
-            }}
-          >
-            Save Preset
-          </button>
-        </form>
       </div>
     </DialogShell>
   );
