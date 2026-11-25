@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import appIconUrl from "./assets/branding/app-icon.png";
 import { getWindowLabel } from "./api/tauri";
 import { FullPlayer } from "./components/FullPlayer";
@@ -7,25 +7,44 @@ import { Icon } from "./components/Icon";
 import { LibraryView } from "./components/LibraryView";
 import { PlayerBar } from "./components/PlayerBar";
 import { QueueDrawer } from "./components/QueueDrawer";
-import { Sidebar } from "./components/Sidebar";
+import { Sidebar, SIDEBAR_NAV_ITEMS, type NavItem } from "./components/Sidebar";
 import { DuplicatesDialog } from "./components/dialogs/DuplicatesDialog";
 import { EqualizerDialog } from "./components/dialogs/EqualizerDialog";
 import { SettingsDialog } from "./components/dialogs/SettingsDialog";
 import { SleepTimerDialog } from "./components/dialogs/SleepTimerDialog";
 import { StatsDialog } from "./components/dialogs/StatsDialog";
 import { TagEditorDialog } from "./components/dialogs/TagEditorDialog";
-import { useLibraryStore } from "./store/useLibraryStore";
+import {
+  useLibraryStore,
+  type LibraryTab,
+  type NavSection,
+} from "./store/useLibraryStore";
 import { usePlayerStore } from "./store/usePlayerStore";
 import { useSettingsStore } from "./store/useSettingsStore";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { MiniPlayer } from "./windows/MiniPlayer";
 
+interface NavSnapshot {
+  activeNav: NavSection;
+  libraryTab: LibraryTab;
+  selectedPlaylistId: string | null;
+  searchQuery: string;
+}
+
 function MainWindow() {
   const initPlayer = usePlayerStore((s) => s.init);
   const initLibrary = useLibraryStore((s) => s.init);
   const initSettings = useSettingsStore((s) => s.init);
+
   const activeNav = useLibraryStore((s) => s.activeNav);
+  const libraryTab = useLibraryStore((s) => s.libraryTab);
+  const selectedPlaylistId = useLibraryStore((s) => s.selectedPlaylistId);
+  const searchQuery = useLibraryStore((s) => s.searchQuery);
+
   const setActiveNav = useLibraryStore((s) => s.setActiveNav);
+  const setLibraryTab = useLibraryStore((s) => s.setLibraryTab);
+  const setSelectedPlaylistId = useLibraryStore((s) => s.setSelectedPlaylistId);
+  const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
   const openDialog = useLibraryStore((s) => s.openDialog);
 
   const keybindings = useSettingsStore((s) => s.settings.keybindings);
@@ -36,6 +55,71 @@ function MainWindow() {
   const setVolume = usePlayerStore((s) => s.setVolume);
   const setFullPlayerOpen = usePlayerStore((s) => s.setFullPlayerOpen);
   const setQueueDrawerOpen = usePlayerStore((s) => s.setQueueDrawerOpen);
+
+  // Track navigation history matching LibraryPanel.kt's history stack
+  const [history, setHistory] = useState<NavSnapshot[]>([]);
+  const prevSnapshotRef = useRef<NavSnapshot>({
+    activeNav,
+    libraryTab,
+    selectedPlaylistId,
+    searchQuery,
+  });
+  const goingBackRef = useRef(false);
+
+  useEffect(() => {
+    const prev = prevSnapshotRef.current;
+    const sameRoute =
+      prev.activeNav === activeNav &&
+      prev.libraryTab === libraryTab &&
+      prev.selectedPlaylistId === selectedPlaylistId;
+    if (!sameRoute) {
+      if (!goingBackRef.current) {
+        setHistory((h) => [...h.slice(-24), prev]);
+      }
+      goingBackRef.current = false;
+    }
+    prevSnapshotRef.current = {
+      activeNav,
+      libraryTab,
+      selectedPlaylistId,
+      searchQuery,
+    };
+  }, [activeNav, libraryTab, selectedPlaylistId, searchQuery]);
+
+  const handleGoBack = useCallback(() => {
+    if (history.length > 0) {
+      const target = history[history.length - 1];
+      goingBackRef.current = true;
+      setHistory((h) => h.slice(0, -1));
+      setActiveNav(target.activeNav);
+      setLibraryTab(target.libraryTab);
+      setSelectedPlaylistId(target.selectedPlaylistId);
+      setSearchQuery(target.searchQuery);
+      return;
+    }
+    if (selectedPlaylistId) {
+      setSelectedPlaylistId(null);
+      return;
+    }
+    if (activeNav !== "home") {
+      setActiveNav("home");
+    }
+  }, [
+    history,
+    selectedPlaylistId,
+    activeNav,
+    setActiveNav,
+    setLibraryTab,
+    setSelectedPlaylistId,
+    setSearchQuery,
+  ]);
+
+  const handleSelectChip = (item: NavItem) => {
+    setActiveNav(item.nav);
+    if (item.tab) setLibraryTab(item.tab);
+    setSelectedPlaylistId(null);
+    setSearchQuery("");
+  };
 
   useEffect(() => {
     void initSettings();
@@ -123,49 +207,79 @@ function MainWindow() {
         className="h-screen w-screen flex flex-col overflow-hidden adaptive-transition"
         style={{ backgroundColor: "var(--surface-0)", color: "var(--text-primary)" }}
       >
-        {/* Top Header Bar across full width (v0.26.1 Main.kt) */}
-        <header className="h-14 shrink-0 px-6 flex items-center justify-between select-none">
+        {/* Top Header Bar across full width (Main.kt lines 633-643) */}
+        <header className="shrink-0 px-7 py-[14px] flex items-center select-none">
           <div className="flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="w-7 h-7 inline-block shrink-0"
-              style={{
-                backgroundColor: "var(--text-primary)",
-                maskImage: `url(${appIconUrl})`,
-                WebkitMaskImage: `url(${appIconUrl})`,
-                maskRepeat: "no-repeat",
-                WebkitMaskRepeat: "no-repeat",
-                maskPosition: "center",
-                WebkitMaskPosition: "center",
-                maskSize: "contain",
-                WebkitMaskSize: "contain",
-              }}
+            <img
+              src={appIconUrl}
+              alt="Umimuko Music"
+              className="w-[42px] h-[42px] object-contain shrink-0 app-brand-icon"
+              draggable={false}
             />
-            <span className="text-lg font-medium tracking-tight">
+            <span className="text-[22px] leading-[28px] font-normal">
               Umimuko Music
             </span>
           </div>
+
+          <div className="flex-1" />
 
           <button
             type="button"
             onClick={() => openDialog("settings")}
             aria-label="Settings"
             title="Settings"
-            className="w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:opacity-85 cursor-pointer"
+            className="w-10 h-10 rounded-full flex items-center justify-center transition-opacity hover:opacity-90 cursor-pointer"
             style={{
-              backgroundColor: "var(--surface-2)",
-              color: "var(--text-primary)",
+              backgroundColor: "var(--accent-container)",
+              color: "var(--on-accent-container)",
             }}
           >
-            <Icon name="settings" size={20} />
+            <Icon name="settings" size={22} />
           </button>
         </header>
 
-        {/* Main Body: Left Sidebar + Content Area */}
+        {/* Main Body: Left Sidebar + Content Column (LibraryPanel.kt lines 369-385) */}
         <div className="flex-1 min-h-0 flex">
           <Sidebar />
-          <main className="flex-1 min-w-0 overflow-y-auto px-6 pb-6 pt-1">
-            {activeNav === "home" ? <HomeScreen /> : <LibraryView />}
+
+          <main className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden pl-6 pr-7 pt-2">
+            {/* Compact horizontal chip strip on narrow viewports (LibraryPanel.kt lines 386-430) */}
+            <div className="flex md:hidden items-center gap-1.5 overflow-x-auto no-scrollbar pb-2.5 shrink-0">
+              {SIDEBAR_NAV_ITEMS.map((item) => {
+                const selected =
+                  item.nav === "home"
+                    ? activeNav === "home"
+                    : item.nav === "liked"
+                      ? activeNav === "liked"
+                      : activeNav === "library" && libraryTab === item.tab;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectChip(item)}
+                    className="h-8 px-4 rounded-[8px] text-[14px] leading-[20px] shrink-0 transition-colors cursor-pointer"
+                    style={{
+                      backgroundColor: selected
+                        ? "var(--accent-container)"
+                        : "transparent",
+                      color: selected
+                        ? "var(--on-accent-container)"
+                        : "var(--text-primary)",
+                      border: selected ? "none" : "1px solid var(--outline)",
+                      fontWeight: selected ? 600 : 500,
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {activeNav === "home" ? (
+              <HomeScreen canGoBack={history.length > 0} onBack={handleGoBack} />
+            ) : (
+              <LibraryView canGoBack onBack={handleGoBack} />
+            )}
           </main>
         </div>
 

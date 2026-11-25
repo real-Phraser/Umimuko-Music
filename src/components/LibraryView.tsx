@@ -1,5 +1,5 @@
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLibraryStore, type SortField } from "../store/useLibraryStore";
 import { usePlayerStore } from "../store/usePlayerStore";
 import { useSettingsStore } from "../store/useSettingsStore";
@@ -12,7 +12,7 @@ const SORT_OPTIONS: Array<{ field: SortField; label: string }> = [
   { field: "title", label: "Title" },
   { field: "artist", label: "Artist" },
   { field: "album", label: "Album" },
-  { field: "addedAt", label: "Added" },
+  { field: "addedAt", label: "Date Added" },
   { field: "durationMs", label: "Duration" },
 ];
 
@@ -22,11 +22,27 @@ function parentDir(path: string): string {
   return idx > 0 ? normalized.slice(0, idx) : "/";
 }
 
-export function LibraryView() {
+function folderLeafName(dir: string): string {
+  const cleaned = dir.replace(/\\/g, "/").replace(/\/+$/, "");
+  const idx = cleaned.lastIndexOf("/");
+  return idx >= 0 ? cleaned.slice(idx + 1) || dir : dir;
+}
+
+function countLabel(n: number, singular: string): string {
+  return `${n} ${n === 1 ? singular : `${singular}s`}`;
+}
+
+interface LibraryViewProps {
+  canGoBack?: boolean;
+  onBack?: () => void;
+}
+
+export function LibraryView({ canGoBack = true, onBack }: LibraryViewProps) {
   const activeNav = useLibraryStore((s) => s.activeNav);
   const libraryTab = useLibraryStore((s) => s.libraryTab);
   const tracks = useLibraryStore((s) => s.tracks);
   const playlists = useLibraryStore((s) => s.playlists);
+  const pinnedTrackIds = useLibraryStore((s) => s.pinnedTrackIds);
   const selectedPlaylistId = useLibraryStore((s) => s.selectedPlaylistId);
   const searchQuery = useLibraryStore((s) => s.searchQuery);
   const sortBy = useLibraryStore((s) => s.sortBy);
@@ -34,23 +50,44 @@ export function LibraryView() {
   const scanProgress = useLibraryStore((s) => s.scanProgress);
 
   const setActiveNav = useLibraryStore((s) => s.setActiveNav);
+  const setLibraryTab = useLibraryStore((s) => s.setLibraryTab);
   const setSelectedPlaylistId = useLibraryStore((s) => s.setSelectedPlaylistId);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
   const setSort = useLibraryStore((s) => s.setSort);
   const createPlaylist = useLibraryStore((s) => s.createPlaylist);
   const deletePlaylist = useLibraryStore((s) => s.deletePlaylist);
+  const togglePin = useLibraryStore((s) => s.togglePin);
   const openDialog = useLibraryStore((s) => s.openDialog);
   const scanFolders = useLibraryStore((s) => s.scanFolders);
   const addFolder = useSettingsStore((s) => s.addFolder);
+  const removeFolder = useSettingsStore((s) => s.removeFolder);
   const playTrack = usePlayerStore((s) => s.playTrack);
 
   const [searchOpen, setSearchOpen] = useState(activeNav === "search");
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [newPlaylistModal, setNewPlaylistModal] = useState(false);
+  const [deletePlaylistConfirm, setDeletePlaylistConfirm] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<{
     kind: "album" | "artist" | "folder";
     value: string;
   } | null>(null);
+
+  // Clear local sub-filter when switching tabs at top level
+  useEffect(() => {
+    setSelectedFilter(null);
+  }, [activeNav, libraryTab]);
+
+  useEffect(() => {
+    if (activeNav === "search") {
+      setSearchOpen(true);
+    }
+  }, [activeNav]);
+
+  const activePlaylist = useMemo(
+    () => playlists.find((p) => p.id === selectedPlaylistId) ?? null,
+    [playlists, selectedPlaylistId]
+  );
 
   const filteredAndSortedTracks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -75,6 +112,7 @@ export function LibraryView() {
         t.title.toLowerCase().includes(q) ||
         t.artist.toLowerCase().includes(q) ||
         t.album.toLowerCase().includes(q) ||
+        t.path.toLowerCase().includes(q) ||
         t.genre.toLowerCase().includes(q)
       );
     });
@@ -84,7 +122,7 @@ export function LibraryView() {
       if (sortBy === "addedAt" || sortBy === "durationMs") {
         cmp = a[sortBy] - b[sortBy];
       } else {
-        cmp = a[sortBy].localeCompare(b[sortBy]);
+        cmp = a[sortBy].localeCompare(b[sortBy], undefined, { sensitivity: "base" });
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -96,22 +134,29 @@ export function LibraryView() {
     const map = new Map<
       string,
       {
-        album: string;
-        artist: string;
+        id: string;
+        title: string;
+        subtitle: string;
         artworkPath: string | null;
         accentColor: string | null;
         tracks: Track[];
       }
     >();
     for (const t of tracks) {
-      const key = `${t.album}__${t.albumArtist || t.artist}`;
+      const albumTitle = t.album || "Unknown Album";
+      const artistName = t.albumArtist || t.artist || "Unknown Artist";
+      const key = `${albumTitle}__${artistName}`;
       const existing = map.get(key);
       if (existing) {
         existing.tracks.push(t);
+        if (!existing.artworkPath && t.artworkPath) {
+          existing.artworkPath = t.artworkPath;
+        }
       } else {
         map.set(key, {
-          album: t.album || "Unknown Album",
-          artist: t.albumArtist || t.artist,
+          id: albumTitle,
+          title: albumTitle,
+          subtitle: artistName,
           artworkPath: t.artworkPath,
           accentColor: t.accentColor,
           tracks: [t],
@@ -122,10 +167,11 @@ export function LibraryView() {
       .filter(
         (a) =>
           !q ||
-          a.album.toLowerCase().includes(q) ||
-          a.artist.toLowerCase().includes(q)
+          a.title.toLowerCase().includes(q) ||
+          a.subtitle.toLowerCase().includes(q) ||
+          a.tracks.some((t) => t.title.toLowerCase().includes(q))
       )
-      .sort((a, b) => a.album.localeCompare(b.album));
+      .sort((a, b) => a.title.localeCompare(b.title));
   }, [tracks, searchQuery]);
 
   const artists = useMemo(() => {
@@ -138,9 +184,21 @@ export function LibraryView() {
       map.set(name, list);
     }
     return [...map.entries()]
-      .map(([artist, items]) => ({ artist, tracks: items }))
-      .filter((a) => !q || a.artist.toLowerCase().includes(q))
-      .sort((a, b) => a.artist.localeCompare(b.artist));
+      .map(([artist, items]) => ({
+        id: artist,
+        title: artist,
+        subtitle: countLabel(items.length, "track"),
+        artworkPath: items.find((t) => t.artworkPath)?.artworkPath ?? null,
+        accentColor: items.find((t) => t.accentColor)?.accentColor ?? null,
+        tracks: items,
+      }))
+      .filter(
+        (a) =>
+          !q ||
+          a.title.toLowerCase().includes(q) ||
+          a.tracks.some((t) => t.title.toLowerCase().includes(q))
+      )
+      .sort((a, b) => a.title.localeCompare(b.title));
   }, [tracks, searchQuery]);
 
   const folders = useMemo(() => {
@@ -153,15 +211,64 @@ export function LibraryView() {
       map.set(dir, list);
     }
     return [...map.entries()]
-      .map(([dir, items]) => ({ dir, tracks: items }))
-      .filter((f) => !q || f.dir.toLowerCase().includes(q))
-      .sort((a, b) => a.dir.localeCompare(b.dir));
+      .map(([dir, items]) => ({
+        id: dir,
+        title: folderLeafName(dir),
+        subtitle: `${countLabel(items.length, "track")} · ${dir}`,
+        artworkPath: items.find((t) => t.artworkPath)?.artworkPath ?? null,
+        accentColor: items.find((t) => t.accentColor)?.accentColor ?? null,
+        tracks: items,
+      }))
+      .filter(
+        (f) =>
+          !q ||
+          f.title.toLowerCase().includes(q) ||
+          f.id.toLowerCase().includes(q) ||
+          f.tracks.some((t) => t.title.toLowerCase().includes(q))
+      )
+      .sort((a, b) => a.title.localeCompare(b.title));
   }, [tracks, searchQuery]);
 
-  const activePlaylist = useMemo(
-    () => playlists.find((p) => p.id === selectedPlaylistId) ?? null,
-    [playlists, selectedPlaylistId]
-  );
+  const playlistGroups = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const trackById = new Map(tracks.map((t) => [t.id, t]));
+    return playlists
+      .map((pl) => {
+        const items = pl.trackIds
+          .map((id) => trackById.get(id))
+          .filter((t): t is Track => Boolean(t));
+        return {
+          id: pl.id,
+          title: pl.name,
+          subtitle: `${items.length} of ${pl.trackIds.length} tracks available`,
+          artworkPath: items.find((t) => t.artworkPath)?.artworkPath ?? null,
+          accentColor: items.find((t) => t.accentColor)?.accentColor ?? null,
+          tracks: items,
+        };
+      })
+      .filter(
+        (g) =>
+          !q ||
+          g.title.toLowerCase().includes(q) ||
+          g.tracks.some((t) => t.title.toLowerCase().includes(q))
+      );
+  }, [playlists, tracks, searchQuery]);
+
+  const activePlaylistTracks = useMemo(() => {
+    if (!activePlaylist) return [];
+    const trackById = new Map(tracks.map((t) => [t.id, t]));
+    const q = searchQuery.trim().toLowerCase();
+    return activePlaylist.trackIds
+      .map((id) => trackById.get(id))
+      .filter((t): t is Track => Boolean(t))
+      .filter(
+        (t) =>
+          !q ||
+          t.title.toLowerCase().includes(q) ||
+          t.artist.toLowerCase().includes(q) ||
+          t.album.toLowerCase().includes(q)
+      );
+  }, [activePlaylist, tracks, searchQuery]);
 
   const handleAddFolder = async () => {
     try {
@@ -184,84 +291,146 @@ export function LibraryView() {
     if (!trimmed) return;
     const pl = await createPlaylist(trimmed);
     setNewPlaylistName("");
+    setNewPlaylistModal(false);
     setSelectedPlaylistId(pl.id);
   };
 
   const handleBack = () => {
     if (selectedFilter) {
       setSelectedFilter(null);
+      setSearchQuery("");
       return;
     }
     if (selectedPlaylistId) {
       setSelectedPlaylistId(null);
+      setSearchQuery("");
+      return;
+    }
+    if (onBack) {
+      onBack();
       return;
     }
     setActiveNav("home");
   };
 
-  // Header title & subtitle matching v0.26.1
+  const inCollection =
+    activeNav === "library" &&
+    (libraryTab === "albums" ||
+      libraryTab === "artists" ||
+      libraryTab === "playlists" ||
+      libraryTab === "folders");
+
+  const showGroups =
+    inCollection && selectedFilter === null && activePlaylist === null;
+
+  const visibleGroups =
+    libraryTab === "albums"
+      ? albums
+      : libraryTab === "artists"
+        ? artists
+        : libraryTab === "playlists"
+          ? playlistGroups
+          : libraryTab === "folders"
+            ? folders
+            : [];
+
+  const countInHeader =
+    selectedFilter === null &&
+    activePlaylist === null &&
+    (activeNav === "library" &&
+      (libraryTab === "songs" ||
+        libraryTab === "albums" ||
+        libraryTab === "artists"));
+
+  const displayedTracks = activePlaylist
+    ? activePlaylistTracks
+    : filteredAndSortedTracks;
+
+  // Header title & subtitle matching LibraryPanel.kt lines 363-445
   let title = "Tracks";
-  let subtitle = "All songs in your library.";
+  let subtitle = countLabel(displayedTracks.length, "track");
   if (activeNav === "liked") {
     title = "Liked songs";
     subtitle = "Your favorites, kept for next time.";
   } else if (activeNav === "search") {
     title = "Search";
-    subtitle = "Find tracks across your library.";
+    subtitle = countLabel(displayedTracks.length, "track");
   } else if (selectedFilter) {
-    title = selectedFilter.value;
-    subtitle = `${filteredAndSortedTracks.length} tracks`;
+    if (selectedFilter.kind === "folder") {
+      title = folderLeafName(selectedFilter.value);
+      subtitle = `${countLabel(displayedTracks.length, "track")} · ${selectedFilter.value}`;
+    } else {
+      title = selectedFilter.value;
+      subtitle = countLabel(displayedTracks.length, "track");
+    }
   } else if (activePlaylist) {
     title = activePlaylist.name;
-    subtitle = `${activePlaylist.trackIds.length} tracks`;
+    subtitle = `${activePlaylistTracks.length} of ${activePlaylist.trackIds.length} tracks available`;
   } else if (libraryTab === "albums") {
     title = "Albums";
-    subtitle = `${albums.length} albums`;
+    subtitle = countLabel(albums.length, "album");
   } else if (libraryTab === "artists") {
     title = "Artists";
-    subtitle = `${artists.length} artists`;
+    subtitle = countLabel(artists.length, "artist");
   } else if (libraryTab === "playlists") {
     title = "Playlists";
-    subtitle = "Your custom mixes and collections.";
+    subtitle = "Your own collections.";
   } else if (libraryTab === "folders") {
     title = "Folders";
-    subtitle = "Music directories on this device.";
+    subtitle = "Your music folders.";
   }
-
-  const showSongsList =
-    activeNav === "liked" ||
-    activeNav === "search" ||
-    libraryTab === "songs" ||
-    selectedFilter !== null;
 
   const activeSortLabel =
     SORT_OPTIONS.find((o) => o.field === sortBy)?.label ?? "Title";
 
+  const showActionBar = !(showGroups && countInHeader);
+
+  const albumPinTrackId =
+    selectedFilter?.kind === "album" ? displayedTracks[0]?.id ?? null : null;
+  const isAlbumPinned = albumPinTrackId
+    ? pinnedTrackIds.includes(albumPinTrackId)
+    : false;
+
+  const handleOpenAlbumFromRow = (albumName: string) => {
+    setActiveNav("library");
+    setLibraryTab("albums");
+    setSelectedPlaylistId(null);
+    setSelectedFilter({ kind: "album", value: albumName || "Unknown Album" });
+  };
+
+  const handleOpenArtistFromRow = (artistName: string) => {
+    setActiveNav("library");
+    setLibraryTab("artists");
+    setSelectedPlaylistId(null);
+    setSelectedFilter({ kind: "artist", value: artistName || "Unknown Artist" });
+  };
+
   return (
-    <div className="space-y-4">
-      {/* Content Header: <- + Title/Subtitle on left; circular Search + pill Add folder on right */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
+    <div className="flex-1 min-h-0 flex flex-col gap-[10px]">
+      {/* Content Header (LibraryPanel.kt lines 431-491) */}
+      <div className="flex items-center gap-2 shrink-0">
+        {canGoBack && (
           <button
             type="button"
             onClick={handleBack}
-            aria-label="Back"
-            className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-opacity hover:opacity-80 cursor-pointer"
+            aria-label={`Back to ${title}`}
+            className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-opacity hover:bg-[var(--surface-variant)] cursor-pointer"
             style={{ color: "var(--text-primary)" }}
           >
-            <Icon name="back" size={20} />
+            <Icon name="back" size={24} />
           </button>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight truncate">
-              {title}
-            </h1>
-            <p
-              className="text-xs truncate mt-0.5"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              {subtitle}
-            </p>
-          </div>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[28px] leading-[36px] font-normal truncate">
+            {title}
+          </h1>
+          <p
+            className="text-[12px] leading-[16px] truncate"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            {subtitle}
+          </p>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -272,82 +441,94 @@ export function LibraryView() {
               setSearchOpen((v) => !v);
             }}
             aria-label={searchOpen ? "Close search" : "Open search"}
-            className="w-12 h-10 rounded-full flex items-center justify-center transition-colors hover:opacity-90 cursor-pointer"
+            className="w-[56px] h-[40px] rounded-full flex items-center justify-center transition-opacity hover:opacity-90 cursor-pointer"
             style={{
-              backgroundColor: "var(--surface-2)",
-              color: "var(--text-primary)",
+              backgroundColor: "var(--accent-container)",
+              color: "var(--on-accent-container)",
             }}
           >
-            <Icon name="search" size={19} />
+            <Icon name="search" size={20} />
           </button>
 
           <button
             type="button"
             disabled={scanProgress.scanning}
             onClick={() => void handleAddFolder()}
-            className="h-10 px-4 rounded-full text-sm font-medium flex items-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
+            className="h-10 pl-[14px] pr-[18px] rounded-full text-[14px] leading-[20px] font-medium flex items-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-40 cursor-pointer"
             style={{
               backgroundColor: "var(--accent)",
               color: "var(--on-accent)",
             }}
           >
-            <Icon name="folder" size={18} />
+            <Icon name="folder" size={20} />
             <span>Add folder</span>
           </button>
         </div>
       </div>
 
-      {/* Expandable Search Bar */}
+      {/* Expandable Search Bar (LibraryPanel.kt lines 505-523) */}
       {searchOpen && (
         <div
-          className="flex items-center gap-2.5 px-4 py-2.5 rounded-full"
+          className="shrink-0 flex items-center gap-3 px-4 py-3 rounded-[24px]"
           style={{
-            backgroundColor: "var(--surface-1)",
+            backgroundColor: "var(--surface-0)",
             border: "1px solid var(--outline-strong)",
           }}
         >
-          <Icon name="search" size={18} style={{ color: "var(--text-muted)" }} />
+          <Icon name="search" size={20} style={{ color: "var(--text-secondary)" }} />
           <input
             type="text"
             autoFocus
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSearchQuery("");
+                setSearchOpen(false);
+              }
+            }}
             placeholder={`Search ${title}`}
             className="bg-transparent text-sm outline-none flex-1 placeholder:text-[var(--text-muted)]"
           />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              className="cursor-pointer"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <Icon name="close" size={16} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery("");
+              setSearchOpen(false);
+            }}
+            aria-label="Close search"
+            className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
+            style={{ color: "var(--text-primary)" }}
+          >
+            <Icon name="back" size={20} />
+          </button>
         </div>
       )}
 
-      {/* Songs / Liked / Search / Filtered View */}
-      {showSongsList && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-semibold">
-              {filteredAndSortedTracks.length}{" "}
-              {filteredAndSortedTracks.length === 1 ? "track" : "tracks"}
+      {/* Action / Sort / Play All Row (LibraryPanel.kt lines 524-586) */}
+      {showActionBar && (
+        <div className="shrink-0 flex flex-wrap items-center gap-2">
+          {countInHeader ? (
+            <div className="flex-1" />
+          ) : (
+            <div className="flex-1 text-[14px] leading-[20px] font-medium">
+              {showGroups
+                ? countLabel(visibleGroups.length, "collection")
+                : countLabel(displayedTracks.length, "track")}
             </div>
+          )}
 
-            <div className="flex items-center gap-2">
-              {/* Sort Dropdown */}
+          {!showGroups && (
+            <>
               <div className="relative">
                 <button
                   type="button"
                   onClick={() => setSortMenuOpen((v) => !v)}
-                  className="h-9 px-3.5 rounded-full text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                  className="h-10 px-3 rounded-full text-[12px] leading-[16px] font-medium flex items-center cursor-pointer hover:bg-[var(--surface-variant)]"
                   style={{
                     backgroundColor: "transparent",
                     border: "1px solid var(--outline-strong)",
-                    color: "var(--text-primary)",
+                    color: "var(--accent)",
                   }}
                 >
                   <span>
@@ -361,7 +542,7 @@ export function LibraryView() {
                       onClick={() => setSortMenuOpen(false)}
                     />
                     <div
-                      className="absolute right-0 top-10 z-40 w-40 py-1.5 rounded-2xl shadow-xl text-xs"
+                      className="absolute right-0 top-11 z-40 w-44 py-1.5 rounded-2xl shadow-xl text-xs"
                       style={{
                         backgroundColor: "var(--surface-3)",
                         border: "1px solid var(--outline)",
@@ -375,7 +556,7 @@ export function LibraryView() {
                             setSort(opt.field);
                             setSortMenuOpen(false);
                           }}
-                          className="w-full px-3.5 py-2 text-left flex items-center justify-between hover:opacity-80 cursor-pointer"
+                          className="w-full px-3.5 py-2 text-left flex items-center justify-between hover:bg-[var(--surface-variant)] cursor-pointer"
                         >
                           <span>{opt.label}</span>
                           {sortBy === opt.field && (
@@ -394,269 +575,304 @@ export function LibraryView() {
                   <button
                     type="button"
                     onClick={() => openDialog("duplicates")}
-                    className="h-9 px-3.5 rounded-full text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                    className="h-10 px-3 rounded-full text-[12px] leading-[16px] font-medium flex items-center gap-1.5 cursor-pointer hover:bg-[var(--surface-variant)]"
                     style={{
                       backgroundColor: "transparent",
                       border: "1px solid var(--outline-strong)",
-                      color: "var(--text-primary)",
+                      color: "var(--accent)",
                     }}
                   >
-                    <Icon name="search" size={14} />
+                    <Icon name="search" size={18} />
                     <span>Duplicates</span>
                   </button>
                 )}
 
-              {filteredAndSortedTracks.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void playTrack(
-                      filteredAndSortedTracks[0].id,
-                      filteredAndSortedTracks.map((t) => t.id)
-                    )
-                  }
-                  className="h-9 px-4 rounded-full text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-                  style={{
-                    backgroundColor: "var(--surface-2)",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  <Icon name="play" size={16} />
-                  <span>Play all</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {filteredAndSortedTracks.length === 0 ? (
-              <div
-                className="py-16 rounded-3xl text-center text-sm"
-                style={{
-                  backgroundColor: "var(--surface-1)",
-                  color: "var(--text-muted)",
-                }}
-              >
-                No matching tracks found.
-              </div>
-            ) : (
-              filteredAndSortedTracks.map((track, idx) => (
-                <TrackRow
-                  key={track.id}
-                  track={track}
-                  index={idx}
-                  queueIds={filteredAndSortedTracks.map((t) => t.id)}
-                />
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Albums Grid */}
-      {activeNav === "library" && !selectedFilter && libraryTab === "albums" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-          {albums.map((alb) => (
-            <button
-              key={`${alb.album}-${alb.artist}`}
-              type="button"
-              onClick={() => setSelectedFilter({ kind: "album", value: alb.album })}
-              className="group text-left p-3 rounded-[20px] transition-colors hover:opacity-95 cursor-pointer"
-              style={{ backgroundColor: "var(--surface-1)" }}
-            >
-              <div className="aspect-square w-full mb-2.5">
-                <Artwork
-                  artworkPath={alb.artworkPath}
-                  accentColor={alb.accentColor}
-                  alt={alb.album}
-                  size="full"
-                  rounded="rounded-xl"
-                />
-              </div>
-              <div className="text-sm font-semibold truncate">{alb.album}</div>
-              <div
-                className="text-xs truncate mt-0.5"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                {alb.artist} • {alb.tracks.length} tracks
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Artists Grid */}
-      {activeNav === "library" && !selectedFilter && libraryTab === "artists" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-          {artists.map((art) => (
-            <button
-              key={art.artist}
-              type="button"
-              onClick={() => setSelectedFilter({ kind: "artist", value: art.artist })}
-              className="flex items-center gap-3.5 p-3.5 rounded-2xl text-left transition-colors hover:opacity-90 cursor-pointer"
-              style={{ backgroundColor: "var(--surface-1)" }}
-            >
-              <div
-                className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+              <button
+                type="button"
+                disabled={displayedTracks.length === 0}
+                onClick={() =>
+                  void playTrack(
+                    displayedTracks[0].id,
+                    displayedTracks.map((t) => t.id)
+                  )
+                }
+                className="h-10 pl-[14px] pr-[18px] rounded-full text-[14px] leading-[20px] font-medium flex items-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-40 cursor-pointer"
                 style={{
                   backgroundColor: "var(--accent-container)",
-                  color: "var(--accent)",
+                  color: "var(--on-accent-container)",
                 }}
               >
-                <Icon name="artist" size={22} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold truncate">{art.artist}</div>
-                <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                  {art.tracks.length} tracks
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Playlists */}
-      {activeNav === "library" && !selectedFilter && libraryTab === "playlists" && (
-        <div className="space-y-4">
-          {activePlaylist ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-end gap-2">
-                {activePlaylist.trackIds.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void playTrack(
-                        activePlaylist.trackIds[0],
-                        activePlaylist.trackIds
-                      )
-                    }
-                    className="h-9 px-4 rounded-full text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-                    style={{
-                      backgroundColor: "var(--surface-2)",
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    <Icon name="play" size={16} />
-                    <span>Play all</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void deletePlaylist(activePlaylist.id)}
-                  className="h-9 px-4 rounded-full text-xs font-medium cursor-pointer"
-                  style={{
-                    backgroundColor: "var(--danger-container)",
-                    color: "var(--danger)",
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-
-              <div className="space-y-2">
-                {activePlaylist.trackIds
-                  .map((id) => tracks.find((t) => t.id === id))
-                  .filter((t): t is Track => Boolean(t))
-                  .map((track, idx) => (
-                    <TrackRow
-                      key={track.id}
-                      track={track}
-                      index={idx}
-                      queueIds={activePlaylist.trackIds}
-                    />
-                  ))}
-              </div>
-            </div>
-          ) : (
-            <>
-              <form onSubmit={handleCreatePlaylist} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={newPlaylistName}
-                  onChange={(e) => setNewPlaylistName(e.target.value)}
-                  placeholder="New playlist name…"
-                  className="px-4 py-2 rounded-full text-sm outline-none w-64"
-                  style={{
-                    backgroundColor: "var(--surface-1)",
-                    border: "1px solid var(--outline)",
-                  }}
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-full text-sm font-medium flex items-center gap-1.5 cursor-pointer"
-                  style={{
-                    backgroundColor: "var(--surface-2)",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  <Icon name="add" size={17} />
-                  <span>New playlist</span>
-                </button>
-              </form>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {playlists.map((pl) => (
-                  <button
-                    key={pl.id}
-                    type="button"
-                    onClick={() => setSelectedPlaylistId(pl.id)}
-                    className="flex items-center gap-3.5 p-3.5 rounded-2xl text-left transition-colors hover:opacity-90 cursor-pointer"
-                    style={{ backgroundColor: "var(--surface-1)" }}
-                  >
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                      style={{
-                        backgroundColor: "var(--accent-container)",
-                        color: "var(--accent)",
-                      }}
-                    >
-                      <Icon name="playlist" size={22} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold truncate">{pl.name}</div>
-                      <div
-                        className="text-xs"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
-                        {pl.trackIds.length} tracks
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                <Icon name="play" size={20} />
+                <span>Play all</span>
+              </button>
             </>
+          )}
+
+          {activeNav === "library" &&
+            libraryTab === "playlists" &&
+            !activePlaylist && (
+              <button
+                type="button"
+                onClick={() => {
+                  setNewPlaylistName("");
+                  setNewPlaylistModal(true);
+                }}
+                className="h-10 px-3 rounded-full text-[14px] leading-[20px] font-medium flex items-center gap-1.5 hover:bg-[var(--surface-variant)] cursor-pointer"
+                style={{ color: "var(--accent)" }}
+              >
+                <Icon name="add" size={20} />
+                <span>New playlist</span>
+              </button>
+            )}
+
+          {albumPinTrackId && (
+            <button
+              type="button"
+              onClick={() => void togglePin(albumPinTrackId)}
+              className="h-10 px-3 rounded-full text-[14px] leading-[20px] font-medium flex items-center gap-1.5 hover:bg-[var(--surface-variant)] cursor-pointer"
+              style={{ color: "var(--accent)" }}
+            >
+              <Icon name={isAlbumPinned ? "unpin" : "pin"} size={20} />
+              <span>{isAlbumPinned ? "Unpin" : "Pin to Home"}</span>
+            </button>
+          )}
+
+          {activePlaylist && (
+            <button
+              type="button"
+              onClick={() => setDeletePlaylistConfirm(true)}
+              className="h-10 px-3 rounded-full text-[14px] leading-[20px] font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+              style={{ color: "var(--accent)" }}
+            >
+              Delete
+            </button>
+          )}
+
+          {selectedFilter?.kind === "folder" && (
+            <button
+              type="button"
+              onClick={async () => {
+                await removeFolder(selectedFilter.value);
+                setSelectedFilter(null);
+                await scanFolders();
+              }}
+              className="h-10 px-3 rounded-full text-[14px] leading-[20px] font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+              style={{ color: "var(--accent)" }}
+            >
+              Remove folder
+            </button>
           )}
         </div>
       )}
 
-      {/* Folders */}
-      {activeNav === "library" && !selectedFilter && libraryTab === "folders" && (
-        <div className="space-y-2">
-          {folders.map((folder) => (
-            <button
-              key={folder.dir}
-              type="button"
-              onClick={() => setSelectedFilter({ kind: "folder", value: folder.dir })}
-              className="w-full flex items-center justify-between p-3.5 rounded-2xl text-left transition-colors hover:opacity-90 cursor-pointer"
-              style={{ backgroundColor: "var(--surface-1)" }}
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <Icon
-                  name="folder"
-                  size={20}
-                  style={{ color: "var(--accent)" }}
-                />
-                <span className="text-sm font-medium truncate">{folder.dir}</span>
+      {/* Scrollable Grid or Track List (LibraryPanel.kt lines 597-663) */}
+      <div className="flex-1 min-h-0 overflow-y-auto pr-3 pb-6">
+        {showGroups ? (
+          visibleGroups.length === 0 ? (
+            <div className="h-full min-h-[280px] flex flex-col items-center justify-center gap-3 text-center">
+              <Artwork
+                artworkPath={null}
+                alt="Empty"
+                size="lg"
+                rounded="rounded-[16px]"
+                className="!w-16 !h-16"
+              />
+              <div className="text-[22px] leading-[28px] font-normal">
+                No {libraryTab} yet
               </div>
-              <span
-                className="text-xs shrink-0 ml-4"
+              <div
+                className="text-[12px] leading-[16px]"
                 style={{ color: "var(--text-secondary)" }}
               >
-                {folder.tracks.length} tracks
-              </span>
-            </button>
-          ))}
+                {libraryTab === "playlists"
+                  ? "Create a playlist, then use a track's menu to add songs."
+                  : libraryTab === "folders"
+                    ? "Add a music folder to see it here."
+                    : "Choose a music folder or try another search."}
+              </div>
+            </div>
+          ) : (
+            <div
+              className="grid gap-3"
+              style={{
+                gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
+              }}
+            >
+              {visibleGroups.map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => {
+                    if (libraryTab === "playlists") {
+                      setSelectedPlaylistId(group.id);
+                    } else if (libraryTab === "albums") {
+                      setSelectedFilter({ kind: "album", value: group.id });
+                    } else if (libraryTab === "artists") {
+                      setSelectedFilter({ kind: "artist", value: group.id });
+                    } else if (libraryTab === "folders") {
+                      setSelectedFilter({ kind: "folder", value: group.id });
+                    }
+                  }}
+                  className="text-center p-4 rounded-[20px] flex flex-col items-center gap-2 transition-colors hover:brightness-105 cursor-pointer"
+                  style={{ backgroundColor: "var(--surface-1)" }}
+                >
+                  <Artwork
+                    artworkPath={group.artworkPath}
+                    accentColor={group.accentColor}
+                    alt={group.title}
+                    size="lg"
+                    rounded="rounded-[28px]"
+                    className="!w-[112px] !h-[112px]"
+                  />
+                  <div className="w-full text-[14px] leading-[20px] font-medium truncate">
+                    {group.title}
+                  </div>
+                  <div
+                    className="w-full text-[11px] leading-[16px] truncate"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
+                    {group.subtitle}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )
+        ) : displayedTracks.length === 0 ? (
+          <div className="h-full min-h-[280px] flex flex-col items-center justify-center gap-3 text-center">
+            <Artwork
+              artworkPath={null}
+              alt="No tracks"
+              size="lg"
+              rounded="rounded-[16px]"
+              className="!w-16 !h-16"
+            />
+            <div className="text-[22px] leading-[28px] font-normal">
+              No tracks here yet
+            </div>
+            <div
+              className="text-[12px] leading-[16px]"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              {activeNav === "liked"
+                ? "Tap a heart next to a track to save it here."
+                : "Try another search or add a music folder."}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {displayedTracks.map((track, idx) => (
+              <TrackRow
+                key={track.id}
+                track={track}
+                index={idx}
+                queueIds={displayedTracks.map((t) => t.id)}
+                onOpenAlbum={handleOpenAlbumFromRow}
+                onOpenArtist={handleOpenArtistFromRow}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* New Playlist Modal (LibraryPanel.kt lines 695-707) */}
+      {newPlaylistModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/55 backdrop-blur-[2px]"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setNewPlaylistModal(false);
+          }}
+        >
+          <form
+            onSubmit={(e) => void handleCreatePlaylist(e)}
+            className="w-full max-w-[400px] p-6 rounded-[28px] flex flex-col gap-[18px] shadow-2xl"
+            style={{
+              backgroundColor: "var(--surface-1)",
+              border: "1px solid var(--outline)",
+            }}
+          >
+            <h2 className="text-[22px] leading-[28px] font-normal">
+              New playlist
+            </h2>
+            <input
+              type="text"
+              autoFocus
+              value={newPlaylistName}
+              onChange={(e) => setNewPlaylistName(e.target.value)}
+              placeholder="Playlist name"
+              className="w-full px-4 py-3 rounded-xl text-sm outline-none"
+              style={{
+                backgroundColor: "var(--surface-0)",
+                border: "1px solid var(--outline-strong)",
+              }}
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setNewPlaylistModal(false)}
+                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+                style={{ color: "var(--accent)" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!newPlaylistName.trim()}
+                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
+                style={{ color: "var(--accent)" }}
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Delete Playlist Confirmation (LibraryPanel.kt lines 722-727) */}
+      {deletePlaylistConfirm && activePlaylist && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/55 backdrop-blur-[2px]"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setDeletePlaylistConfirm(false);
+          }}
+        >
+          <div
+            className="w-full max-w-[400px] p-6 rounded-[28px] flex flex-col gap-[18px] shadow-2xl"
+            style={{
+              backgroundColor: "var(--surface-1)",
+              border: "1px solid var(--outline)",
+            }}
+          >
+            <h2 className="text-[22px] leading-[28px] font-normal">
+              Delete playlist?
+            </h2>
+            <p
+              className="text-[14px] leading-[20px]"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              The playlist is removed. Your music files stay on disk.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeletePlaylistConfirm(false)}
+                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+                style={{ color: "var(--accent)" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await deletePlaylist(activePlaylist.id);
+                  setDeletePlaylistConfirm(false);
+                }}
+                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+                style={{ color: "var(--danger)" }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
