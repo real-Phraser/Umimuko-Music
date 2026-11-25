@@ -21,6 +21,15 @@ import type { Track } from "../types/ipc";
 import { Artwork } from "./Artwork";
 import { Icon } from "./Icon";
 
+function splitArtists(raw: string): string[] {
+  const cleaned = raw.trim();
+  if (!cleaned) return [];
+  return cleaned
+    .split(/\s*(?:,|&|;|\/|\bfeat\.?\b|\bft\.?\b)\s*/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 interface SortableQueueItemProps {
   id: string;
   track: Track;
@@ -38,7 +47,7 @@ interface SortableQueueItemProps {
   onMoveBy: (delta: number) => void;
   onRemove: () => void;
   onOpenAlbum: () => void;
-  onOpenArtist: () => void;
+  onOpenArtist: (artist: string) => void;
 }
 
 function SortableQueueItem({
@@ -69,6 +78,9 @@ function SortableQueueItem({
     isDragging,
   } = useSortable({ id });
 
+  const artists = splitArtists(track.artist);
+  const openUpward = total > 4 && index >= total - 2;
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -81,7 +93,8 @@ function SortableQueueItem({
       isCurrent && !selected
         ? "var(--on-accent-container)"
         : "var(--text-primary)",
-    opacity: isDragging ? 0.85 : isPlayed && !selected ? 0.6 : 1,
+    opacity: isDragging ? 0.92 : isPlayed && !selected ? 0.6 : 1,
+    boxShadow: isDragging ? "0 8px 20px rgba(0,0,0,0.35)" : "none",
   };
 
   return (
@@ -92,7 +105,7 @@ function SortableQueueItem({
         e.preventDefault();
         onToggleSelect(index);
       }}
-      className="relative flex items-center gap-1 px-1 py-1.5 rounded-2xl transition-colors hover:bg-[var(--surface-variant)]"
+      className="relative flex items-center px-1 py-1.5 rounded-[16px] transition-colors hover:bg-[var(--surface-variant)]"
     >
       {selecting ? (
         <div className="w-8 h-8 flex items-center justify-center shrink-0">
@@ -110,12 +123,15 @@ function SortableQueueItem({
           {...attributes}
           {...listeners}
           className="w-8 h-8 flex items-center justify-center rounded-lg cursor-grab active:cursor-grabbing shrink-0"
-          style={{ color: "var(--text-muted)" }}
+          style={{ color: "var(--text-secondary)" }}
+          aria-label={`Drag ${track.title}`}
           title="Drag to reorder"
         >
-          <Icon name="drag" size={18} />
+          <Icon name="drag" size={20} />
         </button>
       )}
+
+      <div className="w-1 shrink-0" />
 
       <button
         type="button"
@@ -126,34 +142,35 @@ function SortableQueueItem({
             onPlay(track.id);
           }
         }}
-        className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
+        className="flex items-center min-w-0 flex-1 text-left cursor-pointer"
       >
         <Artwork
           artworkPath={track.artworkPath}
           accentColor={track.accentColor}
           alt={track.title}
           size="sm"
-          rounded="rounded-xl"
+          rounded="rounded-[11px]"
         />
+        <div className="w-3 shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold truncate">{track.title}</div>
+          <div className="text-sm leading-5 font-semibold truncate">{track.title}</div>
           <div
-            className="text-[11px] truncate"
+            className="text-[11px] leading-4 truncate"
             style={{
               color:
                 isCurrent && !selected
                   ? "var(--on-accent-container)"
                   : "var(--text-secondary)",
-              opacity: isCurrent && !selected ? 0.85 : 1,
+              opacity: isCurrent && !selected ? 0.8 : 1,
             }}
           >
-            {track.artist || "Unknown artist"}
+            {artists.length > 0 ? artists.join(" · ") : "Unknown artist"}
           </div>
         </div>
       </button>
 
       {isCurrent && (
-        <div className="px-1.5 shrink-0" style={{ color: "var(--accent)" }}>
+        <div className="pl-2 pr-1 shrink-0" style={{ color: "var(--accent)" }}>
           <Icon name="levels" size={18} />
         </div>
       )}
@@ -167,18 +184,21 @@ function SortableQueueItem({
               onToggleMenu();
             }}
             className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
-            style={{ color: "var(--text-secondary)" }}
+            style={{ color: "currentColor" }}
             aria-label="Queue actions"
           >
-            <Icon name="more" size={18} />
+            <Icon name="more" size={20} />
           </button>
 
           {menuOpen && (
             <div
-              className="absolute right-0 top-10 z-30 w-56 py-1.5 rounded-2xl shadow-xl border"
+              className={`absolute right-0 ${
+                openUpward ? "bottom-10" : "top-10"
+              } z-30 w-60 py-1.5 rounded-2xl shadow-2xl border`}
               style={{
                 backgroundColor: "var(--surface-3)",
                 borderColor: "var(--outline-strong)",
+                color: "var(--text-primary)",
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -189,9 +209,9 @@ function SortableQueueItem({
                   onCloseMenu();
                   onMoveBy(-1);
                 }}
-                className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-2.5 hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
+                className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-3 hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
               >
-                <Icon name="up" size={16} />
+                <Icon name="up" size={18} />
                 <span>Move up</span>
               </button>
               <button
@@ -201,9 +221,9 @@ function SortableQueueItem({
                   onCloseMenu();
                   onMoveBy(1);
                 }}
-                className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-2.5 hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
+                className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-3 hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
               >
-                <Icon name="down" size={16} />
+                <Icon name="down" size={18} />
                 <span>Move down</span>
               </button>
               <div className="my-1 border-t" style={{ borderColor: "var(--outline)" }} />
@@ -213,26 +233,27 @@ function SortableQueueItem({
                   onCloseMenu();
                   onOpenAlbum();
                 }}
-                className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-2.5 hover:bg-[var(--surface-variant)] cursor-pointer"
+                className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-3 hover:bg-[var(--surface-variant)] cursor-pointer"
               >
-                <Icon name="album" size={16} />
+                <Icon name="album" size={18} />
                 <span className="truncate">
                   Go to album: {track.album || "Unknown album"}
                 </span>
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onCloseMenu();
-                  onOpenArtist();
-                }}
-                className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-2.5 hover:bg-[var(--surface-variant)] cursor-pointer"
-              >
-                <Icon name="artist" size={16} />
-                <span className="truncate">
-                  Go to artist: {track.artist || "Unknown artist"}
-                </span>
-              </button>
+              {(artists.length > 0 ? artists : ["Unknown artist"]).map((artist) => (
+                <button
+                  key={artist}
+                  type="button"
+                  onClick={() => {
+                    onCloseMenu();
+                    onOpenArtist(artist);
+                  }}
+                  className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-3 hover:bg-[var(--surface-variant)] cursor-pointer"
+                >
+                  <Icon name="artist" size={18} />
+                  <span className="truncate">Go to artist: {artist}</span>
+                </button>
+              ))}
               <div className="my-1 border-t" style={{ borderColor: "var(--outline)" }} />
               <button
                 type="button"
@@ -240,10 +261,10 @@ function SortableQueueItem({
                   onCloseMenu();
                   onRemove();
                 }}
-                className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-2.5 hover:bg-[var(--surface-variant)] cursor-pointer"
+                className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-3 hover:bg-[var(--surface-variant)] cursor-pointer"
                 style={{ color: "var(--danger)" }}
               >
-                <Icon name="remove" size={16} />
+                <Icon name="remove" size={18} />
                 <span>Remove from queue</span>
               </button>
             </div>
@@ -271,7 +292,10 @@ export function QueueDrawer() {
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [rowMenuIndex, setRowMenuIndex] = useState<number | null>(null);
-  const currentRowRef = useRef<HTMLDivElement | null>(null);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [playlistName, setPlaylistName] = useState("");
+  const [savingPlaylist, setSavingPlaylist] = useState(false);
+  const nowSectionRef = useRef<HTMLDivElement | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -283,17 +307,24 @@ export function QueueDrawer() {
     setSelectedIndices([]);
     setHeaderMenuOpen(false);
     setRowMenuIndex(null);
+    setSaveModalOpen(false);
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setQueueDrawerOpen(false);
+      if (e.key === "Escape") {
+        if (saveModalOpen) {
+          setSaveModalOpen(false);
+        } else {
+          setQueueDrawerOpen(false);
+        }
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [queueDrawerOpen, setQueueDrawerOpen]);
+  }, [queueDrawerOpen, saveModalOpen, setQueueDrawerOpen]);
 
   useEffect(() => {
-    if (queueDrawerOpen && currentRowRef.current) {
-      currentRowRef.current.scrollIntoView({ block: "center" });
+    if (queueDrawerOpen && nowSectionRef.current) {
+      nowSectionRef.current.scrollIntoView({ block: "start" });
     }
   }, [queueDrawerOpen]);
 
@@ -334,18 +365,27 @@ export function QueueDrawer() {
     await removeFromQueue(playedIndices);
   };
 
-  const handleSaveAsPlaylist = async () => {
-    if (total === 0) return;
-    const name = `Queue (${new Date().toLocaleDateString()})`;
-    await createPlaylist(
-      name,
-      queue.items.map((t) => t.id)
-    );
+  const handleConfirmSavePlaylist = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = playlistName.trim();
+    if (!trimmed || total === 0) return;
+    setSavingPlaylist(true);
+    try {
+      await createPlaylist(
+        trimmed,
+        queue.items.map((t) => t.id)
+      );
+      setSaveModalOpen(false);
+      setPlaylistName("");
+    } finally {
+      setSavingPlaylist(false);
+    }
   };
 
-  const renderSectionLabel = (text: string) => (
+  const renderSectionLabel = (text: string, isNow = false) => (
     <div
-      className="px-4 pt-2.5 pb-1 text-xs font-medium"
+      ref={isNow ? nowSectionRef : undefined}
+      className="pl-4 pt-2.5 pb-1 text-xs font-medium"
       style={{ color: "var(--text-secondary)" }}
     >
       {text}
@@ -356,46 +396,45 @@ export function QueueDrawer() {
     const isCurrent = idx === current;
     const isPlayed = hasCurrent && idx < current;
     return (
-      <div key={itemIds[idx]} ref={isCurrent ? currentRowRef : undefined}>
-        <SortableQueueItem
-          id={itemIds[idx]}
-          track={track}
-          index={idx}
-          total={total}
-          isCurrent={isCurrent}
-          isPlayed={isPlayed}
-          selected={selectedIndices.includes(idx)}
-          selecting={selecting}
-          menuOpen={rowMenuIndex === idx}
-          onToggleMenu={() =>
-            setRowMenuIndex((prev) => (prev === idx ? null : idx))
+      <SortableQueueItem
+        key={itemIds[idx]}
+        id={itemIds[idx]}
+        track={track}
+        index={idx}
+        total={total}
+        isCurrent={isCurrent}
+        isPlayed={isPlayed}
+        selected={selectedIndices.includes(idx)}
+        selecting={selecting}
+        menuOpen={rowMenuIndex === idx}
+        onToggleMenu={() =>
+          setRowMenuIndex((prev) => (prev === idx ? null : idx))
+        }
+        onCloseMenu={() => setRowMenuIndex(null)}
+        onToggleSelect={toggleSelect}
+        onPlay={(id) => void playTrack(id)}
+        onMoveBy={(delta) => {
+          const target = idx + delta;
+          if (target >= 0 && target < total) {
+            void reorderQueue(idx, target);
           }
-          onCloseMenu={() => setRowMenuIndex(null)}
-          onToggleSelect={toggleSelect}
-          onPlay={(id) => void playTrack(id)}
-          onMoveBy={(delta) => {
-            const target = idx + delta;
-            if (target >= 0 && target < total) {
-              void reorderQueue(idx, target);
-            }
-          }}
-          onRemove={() => void removeFromQueue([idx])}
-          onOpenAlbum={() => {
-            setQueueDrawerOpen(false);
-            setFullPlayerOpen(false);
-            setActiveNav("library");
-            setLibraryTab("albums");
-            setSearchQuery(track.album);
-          }}
-          onOpenArtist={() => {
-            setQueueDrawerOpen(false);
-            setFullPlayerOpen(false);
-            setActiveNav("library");
-            setLibraryTab("artists");
-            setSearchQuery(track.artist);
-          }}
-        />
-      </div>
+        }}
+        onRemove={() => void removeFromQueue([idx])}
+        onOpenAlbum={() => {
+          setQueueDrawerOpen(false);
+          setFullPlayerOpen(false);
+          setActiveNav("library");
+          setLibraryTab("albums");
+          setSearchQuery(track.album);
+        }}
+        onOpenArtist={(artist) => {
+          setQueueDrawerOpen(false);
+          setFullPlayerOpen(false);
+          setActiveNav("library");
+          setLibraryTab("artists");
+          setSearchQuery(artist);
+        }}
+      />
     );
   };
 
@@ -411,19 +450,21 @@ export function QueueDrawer() {
         }
       }}
     >
+      {/* QueueTheme.kt: surfaceContainer = lerp(surface, primary, 0.06f), width=440dp, heightIn(max=600dp) */}
       <div
-        className="w-full max-w-[440px] max-h-[600px] rounded-[28px] flex flex-col overflow-hidden shadow-2xl adaptive-transition pt-5 pb-3 px-2"
+        className="w-[440px] max-w-[calc(100vw-32px)] max-h-[600px] rounded-[28px] flex flex-col overflow-hidden adaptive-transition pt-5 pb-3 px-2"
         style={{
-          backgroundColor: "var(--surface-2)",
+          backgroundColor: "color-mix(in srgb, var(--surface-1) 94%, var(--accent) 6%)",
           border: "1px solid var(--outline)",
           boxShadow: "var(--shadow-elevated)",
+          color: "var(--text-primary)",
         }}
       >
         {/* Header */}
         {selecting ? (
-          <div className="pl-4 pr-1 flex items-center justify-between gap-2">
+          <div className="pl-4 flex items-center justify-between gap-1">
             <div className="min-w-0 flex-1">
-              <h2 className="text-[22px] font-semibold leading-tight">
+              <h2 className="text-2xl leading-8 font-normal">
                 {selectedIndices.length} selected
               </h2>
               <p className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
@@ -433,7 +474,7 @@ export function QueueDrawer() {
             <button
               type="button"
               onClick={() => setSelectedIndices(queue.items.map((_, i) => i))}
-              className="px-2.5 py-1.5 rounded-full text-xs font-medium hover:bg-[var(--surface-variant)] cursor-pointer"
+              className="px-2.5 py-1.5 rounded-full text-sm font-medium hover:bg-[var(--surface-variant)] cursor-pointer shrink-0"
               style={{ color: "var(--accent)" }}
             >
               Select all
@@ -441,24 +482,26 @@ export function QueueDrawer() {
             <button
               type="button"
               onClick={() => void handleRemoveSelected()}
-              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
+              className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer shrink-0"
               title="Remove selected tracks"
+              aria-label="Remove selected tracks"
             >
-              <Icon name="remove" size={20} />
+              <Icon name="remove" size={24} />
             </button>
             <button
               type="button"
               onClick={() => setSelectedIndices([])}
-              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
+              className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer shrink-0"
               title="Cancel selection"
+              aria-label="Cancel selection"
             >
-              <Icon name="close" size={20} />
+              <Icon name="close" size={24} />
             </button>
           </div>
         ) : (
-          <div className="pl-4 pr-1 flex items-center justify-between gap-2">
+          <div className="pl-4 flex items-center justify-between gap-1">
             <div className="min-w-0 flex-1">
-              <h2 className="text-[22px] font-semibold leading-tight">Queue</h2>
+              <h2 className="text-2xl leading-8 font-normal">Queue</h2>
               <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
                 {total === 0
                   ? "Nothing queued"
@@ -473,15 +516,16 @@ export function QueueDrawer() {
                   e.stopPropagation();
                   setHeaderMenuOpen((v) => !v);
                 }}
-                className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
+                className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
                 title="Queue options"
+                aria-label="Queue options"
               >
-                <Icon name="more" size={20} />
+                <Icon name="more" size={24} />
               </button>
 
               {headerMenuOpen && (
                 <div
-                  className="absolute right-0 top-10 z-30 w-48 py-1.5 rounded-2xl shadow-xl border"
+                  className="absolute right-0 top-11 z-30 w-48 py-1.5 rounded-2xl shadow-2xl border"
                   style={{
                     backgroundColor: "var(--surface-3)",
                     borderColor: "var(--outline-strong)",
@@ -504,11 +548,12 @@ export function QueueDrawer() {
                     disabled={total === 0}
                     onClick={() => {
                       setHeaderMenuOpen(false);
-                      void handleSaveAsPlaylist();
+                      setPlaylistName(`Queue (${new Date().toLocaleDateString()})`);
+                      setSaveModalOpen(true);
                     }}
-                    className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-2 hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
+                    className="w-full px-3.5 py-2 text-left text-xs flex items-center gap-2.5 hover:bg-[var(--surface-variant)] disabled:opacity-40 cursor-pointer"
                   >
-                    <Icon name="playlist_add" size={16} />
+                    <Icon name="playlist_add" size={18} />
                     <span>Save as playlist</span>
                   </button>
                 </div>
@@ -518,16 +563,17 @@ export function QueueDrawer() {
             <button
               type="button"
               onClick={() => setQueueDrawerOpen(false)}
-              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
+              className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
               title="Close queue"
+              aria-label="Close queue"
             >
-              <Icon name="close" size={20} />
+              <Icon name="close" size={24} />
             </button>
           </div>
         )}
 
         {/* List */}
-        <div className="mt-2 flex-1 overflow-y-auto pr-1 space-y-0.5">
+        <div className="mt-2 flex-1 overflow-y-auto pr-2 space-y-0.5">
           {total === 0 ? (
             <div
               className="h-40 flex items-center justify-center text-sm"
@@ -551,7 +597,7 @@ export function QueueDrawer() {
 
                 {hasCurrent && (
                   <>
-                    {renderSectionLabel("Now playing")}
+                    {renderSectionLabel("Now playing", true)}
                     {renderRow(queue.items[current], current)}
                   </>
                 )}
@@ -571,6 +617,68 @@ export function QueueDrawer() {
           )}
         </div>
       </div>
+
+      {/* Save queue as playlist dialog */}
+      {saveModalOpen && (
+        <div
+          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/50"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !savingPlaylist) {
+              setSaveModalOpen(false);
+            }
+          }}
+        >
+          <form
+            onSubmit={handleConfirmSavePlaylist}
+            className="w-full max-w-sm rounded-[24px] p-6 space-y-4 shadow-2xl"
+            style={{
+              backgroundColor: "var(--surface-2)",
+              border: "1px solid var(--outline)",
+              color: "var(--text-primary)",
+            }}
+          >
+            <h3 className="text-lg font-bold">Save queue as playlist</h3>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                Playlist name
+              </span>
+              <input
+                type="text"
+                autoFocus
+                value={playlistName}
+                onChange={(e) => setPlaylistName(e.target.value)}
+                placeholder="Playlist name"
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none"
+                style={{
+                  backgroundColor: "var(--surface-1)",
+                  border: "1px solid var(--outline-strong)",
+                }}
+              />
+            </label>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={savingPlaylist}
+                onClick={() => setSaveModalOpen(false)}
+                className="px-4 py-2 rounded-full text-sm cursor-pointer hover:bg-[var(--surface-variant)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingPlaylist || !playlistName.trim()}
+                className="px-5 py-2 rounded-full text-sm font-medium cursor-pointer disabled:opacity-45"
+                style={{
+                  backgroundColor: "var(--accent)",
+                  color: "var(--on-accent)",
+                }}
+              >
+                {savingPlaylist ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
