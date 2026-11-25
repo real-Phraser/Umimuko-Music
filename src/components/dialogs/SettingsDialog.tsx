@@ -1,11 +1,14 @@
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import { isTauriRuntime } from "../../api/tauri";
-import appIconUrl from "../../assets/branding/window-icon.png";
+import { api, isTauriRuntime } from "../../api/tauri";
+import appIconUrl from "../../assets/branding/app-icon.png";
+import githubIconUrl from "../../assets/branding/github.png";
 import { useLibraryStore } from "../../store/useLibraryStore";
+import { usePlayerStore } from "../../store/usePlayerStore";
 import { useSettingsStore } from "../../store/useSettingsStore";
-import type { KeybindingsConfig, ThemeMode } from "../../types/ipc";
+import type { KeybindingsConfig, ListeningStats, ThemeMode } from "../../types/ipc";
 import { Icon, type IconName } from "../Icon";
+import { getShowRomanizedPref, setShowRomanizedPref } from "../lyrics/SpicyLyricsView";
 
 type SettingsTabId =
   | "audio"
@@ -26,23 +29,178 @@ const SETTINGS_TABS: Array<{ id: SettingsTabId; title: string; icon: IconName }>
   { id: "about", title: "About & Credits", icon: "info" },
 ];
 
-const KEYBINDING_LABELS: Array<{ key: keyof KeybindingsConfig; label: string }> = [
-  { key: "playPause", label: "Play / Pause" },
-  { key: "nextTrack", label: "Next Track" },
-  { key: "prevTrack", label: "Previous Track" },
-  { key: "volumeUp", label: "Volume Up" },
-  { key: "volumeDown", label: "Volume Down" },
-  { key: "toggleMute", label: "Mute" },
-  { key: "toggleLyrics", label: "Toggle Lyrics" },
-  { key: "toggleQueue", label: "Toggle Queue" },
-  { key: "focusSearch", label: "Focus Search" },
+const DEFAULT_KEYBINDINGS: KeybindingsConfig = {
+  playPause: "Space",
+  nextTrack: "ArrowRight",
+  prevTrack: "ArrowLeft",
+  volumeUp: "ArrowUp",
+  volumeDown: "ArrowDown",
+  toggleMute: "KeyM",
+  toggleLyrics: "KeyL",
+  toggleQueue: "KeyQ",
+  focusSearch: "KeyF",
+};
+
+const KEYBINDING_ITEMS: Array<{
+  key: keyof KeybindingsConfig;
+  title: string;
+  category: "Playback" | "Audio" | "View";
+}> = [
+  { key: "playPause", title: "Play / Pause", category: "Playback" },
+  { key: "nextTrack", title: "Next Track", category: "Playback" },
+  { key: "prevTrack", title: "Previous Track", category: "Playback" },
+  { key: "volumeUp", title: "Volume Up (+5%)", category: "Audio" },
+  { key: "volumeDown", title: "Volume Down (-5%)", category: "Audio" },
+  { key: "toggleMute", title: "Mute / Unmute", category: "Audio" },
+  { key: "toggleLyrics", title: "Toggle Synced Lyrics", category: "View" },
+  { key: "toggleQueue", title: "Toggle Queue", category: "View" },
+  { key: "focusSearch", title: "Focus Search", category: "View" },
 ];
+
+interface ThemePresetCard {
+  id: string;
+  name: string;
+  description: string;
+  previewAccent: string;
+  previewBackground: string;
+  mode: ThemeMode;
+  adaptive: boolean;
+}
+
+const CURATED_PRESETS: ThemePresetCard[] = [
+  {
+    id: "dynamic",
+    name: "Dynamic Material You",
+    description: "Harmonizes dynamically with the active album artwork colors",
+    previewAccent: "#64B5F6",
+    previewBackground: "#1E242B",
+    mode: "dark",
+    adaptive: true,
+  },
+  {
+    id: "oled_black",
+    name: "OLED Pure Black",
+    description: "Pure pitch-black background with vibrant electric blue accents",
+    previewAccent: "#4DA3FF",
+    previewBackground: "#000000",
+    mode: "dark",
+    adaptive: false,
+  },
+  {
+    id: "nord",
+    name: "Nordic Frost",
+    description: "Arctic, north-bluish clean aesthetic inspired by the polar night",
+    previewAccent: "#88C0D0",
+    previewBackground: "#242933",
+    mode: "dark",
+    adaptive: false,
+  },
+  {
+    id: "dracula",
+    name: "Dracula",
+    description: "Dark gothic palette with bright purple, pink, and green highlights",
+    previewAccent: "#BD93F9",
+    previewBackground: "#1E1F29",
+    mode: "dark",
+    adaptive: false,
+  },
+  {
+    id: "rose_pine",
+    name: "Rosé Pine",
+    description: "Soho chic with soft warm rose, gold, and seafoam pastels",
+    previewAccent: "#EBBCBA",
+    previewBackground: "#191724",
+    mode: "dark",
+    adaptive: false,
+  },
+  {
+    id: "synthwave",
+    name: "Retro Synthwave",
+    description: "80s outrun neon: radioactive magenta, deep purple, and cyber cyan",
+    previewAccent: "#FF71CE",
+    previewBackground: "#140B24",
+    mode: "dark",
+    adaptive: false,
+  },
+  {
+    id: "catppuccin",
+    name: "Catppuccin Mocha",
+    description: "Warm soothing pastel palette with lavender and mauve accents",
+    previewAccent: "#CBA6F7",
+    previewBackground: "#181825",
+    mode: "dark",
+    adaptive: false,
+  },
+  {
+    id: "light_minimal",
+    name: "Clean Studio Light",
+    description: "Crisp, airy daytime workspace with pure white surfaces and cobalt blue",
+    previewAccent: "#1A73E8",
+    previewBackground: "#F8F9FA",
+    mode: "light",
+    adaptive: false,
+  },
+];
+
+function formatKeyCode(code: string): string {
+  switch (code) {
+    case "Space":
+      return "Space";
+    case "ArrowRight":
+      return "→";
+    case "ArrowLeft":
+      return "←";
+    case "ArrowUp":
+      return "↑";
+    case "ArrowDown":
+      return "↓";
+    case "Enter":
+      return "↵ Enter";
+    default:
+      return code.startsWith("Key") ? code.slice(3) : code;
+  }
+}
+
+function M3Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className="w-12 h-7 rounded-full p-1 transition-colors cursor-pointer shrink-0"
+      style={{
+        backgroundColor: checked ? "var(--accent)" : "var(--surface-3)",
+        border: checked ? "none" : "1px solid var(--outline-strong)",
+      }}
+    >
+      <span
+        className="block w-5 h-5 rounded-full transition-transform"
+        style={{
+          backgroundColor: checked ? "var(--on-accent)" : "var(--text-secondary)",
+          transform: checked ? "translateX(20px)" : "translateX(0px)",
+        }}
+      />
+    </button>
+  );
+}
 
 export function SettingsDialog() {
   const activeDialog = useLibraryStore((s) => s.activeDialog);
   const openDialog = useLibraryStore((s) => s.openDialog);
   const scanFolders = useLibraryStore((s) => s.scanFolders);
   const tracksCount = useLibraryStore((s) => s.tracks.length);
+  const currentTrackId = usePlayerStore((s) => s.playback.currentTrackId);
+  const refreshLyrics = usePlayerStore((s) => s.refreshLyrics);
 
   const settings = useSettingsStore((s) => s.settings);
   const saveSettings = useSettingsStore((s) => s.saveSettings);
@@ -50,29 +208,90 @@ export function SettingsDialog() {
   const setAdaptiveAccent = useSettingsStore((s) => s.setAdaptiveAccent);
   const addFolder = useSettingsStore((s) => s.addFolder);
   const removeFolder = useSettingsStore((s) => s.removeFolder);
+  const updateEqualizer = useSettingsStore((s) => s.updateEqualizer);
   const updateCrossfade = useSettingsStore((s) => s.updateCrossfade);
 
   const [activeTab, setActiveTab] = useState<SettingsTabId>("audio");
   const [folderInput, setFolderInput] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState(settings.spicyLyricsApiKey);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [capturingKey, setCapturingKey] = useState<keyof KeybindingsConfig | null>(
-    null
-  );
+  const [keyStatusMsg, setKeyStatusMsg] = useState<string | null>(null);
+  const [cacheStatusMsg, setCacheStatusMsg] = useState<string | null>(null);
+  const [showRomanized, setShowRomanized] = useState(getShowRomanizedPref);
+  const [curvePref, setCurvePref] = useState<"equal_power" | "linear">(() => {
+    try {
+      return localStorage.getItem("umimuko_crossfade_curve") === "linear"
+        ? "linear"
+        : "equal_power";
+    } catch {
+      return "equal_power";
+    }
+  });
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(() => {
+    if (settings.adaptiveAccent) return "dynamic";
+    return settings.theme === "light" ? "light_minimal" : "oled_black";
+  });
+  const [recordingKey, setRecordingKey] = useState<keyof KeybindingsConfig | null>(null);
+  const [keyConflictMsg, setKeyConflictMsg] = useState<string | null>(null);
+  const [stats, setStats] = useState<ListeningStats | null>(null);
+
+  useEffect(() => {
+    setApiKeyInput(settings.spicyLyricsApiKey);
+  }, [settings.spicyLyricsApiKey]);
+
+  useEffect(() => {
+    if (activeDialog === "settings" && activeTab === "stats") {
+      void api.getListeningStats().then(setStats);
+    }
+  }, [activeDialog, activeTab]);
 
   useEffect(() => {
     if (activeDialog !== "settings") return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !capturingKey) {
+      if (recordingKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === "Escape") {
+          setRecordingKey(null);
+          return;
+        }
+        if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) {
+          return;
+        }
+        const conflictItem = KEYBINDING_ITEMS.find(
+          (item) =>
+            item.key !== recordingKey && settings.keybindings[item.key] === e.code
+        );
+        if (conflictItem) {
+          setKeyConflictMsg(`Shortcut replaced from '${conflictItem.title}'`);
+        } else {
+          setKeyConflictMsg(null);
+        }
+        void saveSettings({
+          ...settings,
+          keybindings: {
+            ...settings.keybindings,
+            [recordingKey]: e.code,
+          },
+        });
+        setRecordingKey(null);
+        return;
+      }
+      if (e.key === "Escape") {
         openDialog(null);
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeDialog, capturingKey, openDialog]);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [activeDialog, openDialog, recordingKey, saveSettings, settings]);
 
   if (activeDialog !== "settings") return null;
 
   const currentTab = SETTINGS_TABS.find((t) => t.id === activeTab)!;
+  const crossfadeSeconds = settings.crossfade.enabled
+    ? settings.crossfade.durationMs / 1000
+    : 0;
+  const isGapless = !settings.crossfade.enabled || crossfadeSeconds <= 0.05;
 
   const handleBrowseFolder = async () => {
     if (isTauriRuntime()) {
@@ -98,19 +317,21 @@ export function SettingsDialog() {
         if (e.target === e.currentTarget) openDialog(null);
       }}
     >
+      {/* SettingsDialog.kt: widthIn(min=780dp, max=960dp), fillMaxHeight(0.88f), RoundedCornerShape(24dp) */}
       <div
-        className="w-full max-w-[920px] h-[85vh] max-h-[680px] rounded-[24px] flex overflow-hidden shadow-2xl adaptive-transition"
+        className="w-[min(940px,calc(100vw-48px))] h-[88vh] max-h-[700px] rounded-[24px] flex overflow-hidden adaptive-transition"
         style={{
-          backgroundColor: "var(--surface-2)",
+          backgroundColor: "var(--surface-1)",
+          color: "var(--text-primary)",
           border: "1px solid var(--outline)",
           boxShadow: "var(--shadow-elevated)",
         }}
       >
-        {/* Left Navigation Sidebar */}
+        {/* Left Sidebar Navigation (220dp) */}
         <aside
-          className="w-56 shrink-0 flex flex-col p-4 gap-1.5 border-r"
+          className="w-[220px] shrink-0 flex flex-col p-4 gap-1.5 border-r"
           style={{
-            backgroundColor: "var(--surface-1)",
+            backgroundColor: "color-mix(in srgb, var(--surface-2) 65%, var(--surface-1))",
             borderColor: "var(--outline)",
           }}
         >
@@ -128,11 +349,9 @@ export function SettingsDialog() {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className="w-full px-3.5 py-2.5 rounded-[14px] flex items-center gap-3 text-left text-xs transition-colors cursor-pointer"
+                className="w-full px-3.5 py-3 rounded-[14px] flex items-center gap-3 text-left text-sm transition-colors cursor-pointer"
                 style={{
-                  backgroundColor: selected
-                    ? "var(--accent-container)"
-                    : "transparent",
+                  backgroundColor: selected ? "var(--accent-container)" : "transparent",
                   color: selected
                     ? "var(--on-accent-container)"
                     : "var(--text-primary)",
@@ -141,7 +360,7 @@ export function SettingsDialog() {
               >
                 <Icon
                   name={tab.icon}
-                  size={18}
+                  size={20}
                   style={{
                     color: selected
                       ? "var(--on-accent-container)"
@@ -156,466 +375,828 @@ export function SettingsDialog() {
           <div className="flex-1" />
 
           <div
-            className="px-3 text-[11px] opacity-60"
-            style={{ color: "var(--text-secondary)" }}
+            className="px-3 text-[11px]"
+            style={{ color: "var(--text-secondary)", opacity: 0.6 }}
           >
             Umimuko Music v0.26.1
           </div>
         </aside>
 
-        {/* Right Tab Content Pane */}
+        {/* Tab Content Pane (padding = 28dp) */}
         <div className="flex-1 min-w-0 flex flex-col p-7">
-          <div className="flex items-center justify-between pb-4 border-b" style={{ borderColor: "var(--outline)" }}>
-            <h2 className="text-xl font-bold">{currentTab.title}</h2>
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl leading-8 font-bold">{currentTab.title}</h2>
             <button
               type="button"
               onClick={() => openDialog(null)}
-              className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
-              style={{ color: "var(--text-secondary)" }}
+              className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
+              style={{ color: "var(--text-primary)" }}
               title="Close"
+              aria-label="Close settings"
             >
-              <Icon name="close" size={18} />
+              <Icon name="close" size={22} />
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto pt-5 space-y-6 pr-1">
+          <div className="my-4 h-px" style={{ backgroundColor: "var(--outline)" }} />
+
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-5 pr-1">
             {activeTab === "audio" && (
               <>
+                {/* 10-Band Equalizer Card */}
                 <div
-                  className="p-4 rounded-2xl flex items-center justify-between gap-4"
-                  style={{
-                    backgroundColor: "var(--surface-1)",
-                    border: "1px solid var(--outline)",
-                  }}
+                  className="p-[18px] rounded-2xl flex items-center justify-between gap-4"
+                  style={{ backgroundColor: "var(--surface-2)" }}
                 >
                   <div>
-                    <div className="text-sm font-semibold">10-Band Equalizer</div>
+                    <div className="text-base font-bold">10-Band Equalizer</div>
                     <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                      Configure peaking EQ bands, preamp gain, and custom presets
+                      Active preset: {settings.equalizer.presetName || "Custom"}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => openDialog("equalizer")}
-                    className="px-4 py-2 rounded-full text-xs font-semibold cursor-pointer shrink-0"
-                    style={{
-                      backgroundColor: "var(--accent)",
-                      color: "var(--on-accent)",
-                    }}
-                  >
-                    Open Equalizer
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openDialog("equalizer")}
+                      className="px-4 py-2 rounded-full text-xs font-semibold cursor-pointer"
+                      style={{
+                        backgroundColor: "var(--accent-container)",
+                        color: "var(--on-accent-container)",
+                      }}
+                    >
+                      Open Equalizer
+                    </button>
+                    <M3Switch
+                      checked={settings.equalizer.enabled}
+                      onChange={(enabled) =>
+                        void updateEqualizer({ ...settings.equalizer, enabled })
+                      }
+                      label="Toggle 10-Band Equalizer"
+                    />
+                  </div>
                 </div>
 
+                {/* Crossfade & Gapless Transitions */}
                 <div
-                  className="p-4 rounded-2xl space-y-3"
-                  style={{
-                    backgroundColor: "var(--surface-1)",
-                    border: "1px solid var(--outline)",
-                  }}
+                  className="p-[18px] rounded-2xl space-y-2.5"
+                  style={{ backgroundColor: "var(--surface-2)" }}
                 >
-                  <div className="text-sm font-semibold">Crossfade & Gapless</div>
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.crossfade.gapless}
-                      onChange={(e) =>
-                        void updateCrossfade({
-                          ...settings.crossfade,
-                          gapless: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
-                    />
-                    <span className="text-sm">Gapless playback</span>
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-bold">
+                      Crossfade &amp; Gapless Transitions
+                    </span>
+                    <span className="text-base font-bold" style={{ color: "var(--accent)" }}>
+                      {isGapless ? "Gapless Lookahead" : `${crossfadeSeconds.toFixed(1)}s`}
+                    </span>
+                  </div>
 
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.crossfade.enabled}
-                      onChange={(e) =>
-                        void updateCrossfade({
-                          ...settings.crossfade,
-                          enabled: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
-                    />
-                    <span className="text-sm">Crossfade between tracks</span>
-                  </label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={12}
+                    step={0.5}
+                    value={crossfadeSeconds}
+                    onChange={(e) => {
+                      const secs = Number(e.target.value);
+                      void updateCrossfade({
+                        enabled: secs > 0.05,
+                        durationMs: Math.round(secs * 1000),
+                        gapless: secs <= 0.05,
+                      });
+                    }}
+                    className="umimuko-slider w-full"
+                    style={{
+                      background: `linear-gradient(90deg, var(--accent) ${(crossfadeSeconds / 12) * 100}%, var(--surface-3) ${(crossfadeSeconds / 12) * 100}%)`,
+                      height: 4,
+                      borderRadius: 999,
+                    }}
+                  />
 
-                  {settings.crossfade.enabled && (
-                    <div className="flex items-center gap-3 pt-1">
-                      <span className="text-xs w-20" style={{ color: "var(--text-secondary)" }}>
-                        Duration
-                      </span>
-                      <input
-                        type="range"
-                        min={500}
-                        max={10000}
-                        step={500}
-                        value={settings.crossfade.durationMs}
-                        onChange={(e) =>
-                          void updateCrossfade({
-                            ...settings.crossfade,
-                            durationMs: Number(e.target.value),
-                          })
-                        }
-                        className="umimuko-slider flex-1"
-                      />
-                      <span className="text-xs tabular-nums w-12 text-right">
-                        {(settings.crossfade.durationMs / 1000).toFixed(1)}s
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                      Transition curve:
+                    </span>
+                    {(
+                      [
+                        { id: "equal_power", label: "Equal-Power" },
+                        { id: "linear", label: "Linear" },
+                      ] as const
+                    ).map((chip) => {
+                      const selected = curvePref === chip.id;
+                      return (
+                        <button
+                          key={chip.id}
+                          type="button"
+                          onClick={() => {
+                            setCurvePref(chip.id);
+                            try {
+                              localStorage.setItem("umimuko_crossfade_curve", chip.id);
+                            } catch {
+                              // ignore
+                            }
+                          }}
+                          className="h-8 px-3 rounded-lg text-sm font-medium cursor-pointer"
+                          style={{
+                            backgroundColor: selected
+                              ? "var(--accent-container)"
+                              : "transparent",
+                            color: selected
+                              ? "var(--on-accent-container)"
+                              : "var(--text-secondary)",
+                            border: selected ? "none" : "1px solid var(--outline-strong)",
+                          }}
+                        >
+                          {chip.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </>
             )}
 
             {activeTab === "library" && (
               <>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-semibold">Music Folders</div>
-                    <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                      {tracksCount} tracks indexed in your library
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void scanFolders()}
-                    className="px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer"
-                    style={{
-                      backgroundColor: "var(--accent-container)",
-                      color: "var(--on-accent-container)",
-                    }}
-                  >
-                    Rescan Now
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  {settings.folders.length === 0 ? (
-                    <div
-                      className="p-4 rounded-2xl text-xs text-center"
-                      style={{
-                        backgroundColor: "var(--surface-1)",
-                        color: "var(--text-secondary)",
-                        border: "1px solid var(--outline)",
-                      }}
-                    >
-                      No music folders added yet.
-                    </div>
-                  ) : (
-                    settings.folders.map((folder) => (
-                      <div
-                        key={folder}
-                        className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs"
-                        style={{
-                          backgroundColor: "var(--surface-1)",
-                          border: "1px solid var(--outline)",
-                        }}
-                      >
-                        <span className="truncate">{folder}</span>
-                        <button
-                          type="button"
-                          onClick={() => void removeFolder(folder)}
-                          className="p-1 rounded-full hover:opacity-80 cursor-pointer"
-                          style={{ color: "var(--danger)" }}
-                          title="Remove folder"
-                        >
-                          <Icon name="remove" size={15} />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {!isTauriRuntime() && (
-                    <input
-                      type="text"
-                      value={folderInput}
-                      onChange={(e) => setFolderInput(e.target.value)}
-                      placeholder="/path/to/music…"
-                      className="flex-1 px-3.5 py-2 rounded-full text-xs outline-none"
-                      style={{
-                        backgroundColor: "var(--surface-1)",
-                        border: "1px solid var(--outline)",
-                      }}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => void handleBrowseFolder()}
-                    className="px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                    style={{
-                      backgroundColor: "var(--accent)",
-                      color: "var(--on-accent)",
-                    }}
-                  >
-                    <Icon name="add" size={15} />
-                    <span>Add Folder</span>
-                  </button>
-                </div>
-
                 <div
-                  className="p-4 rounded-2xl flex items-center justify-between gap-4"
+                  className="p-[18px] rounded-2xl flex items-center justify-between gap-4"
                   style={{
-                    backgroundColor: "var(--surface-1)",
-                    border: "1px solid var(--outline)",
+                    backgroundColor: "color-mix(in srgb, var(--accent-container) 40%, transparent)",
                   }}
                 >
                   <div>
-                    <div className="text-sm font-semibold">Duplicate Track Detection</div>
+                    <div className="text-base font-bold">Indexed Audio Files</div>
                     <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                      Find exact file hash or metadata + duration duplicates
+                      {tracksCount} total songs in library
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => openDialog("duplicates")}
-                    className="px-4 py-2 rounded-full text-xs font-semibold cursor-pointer shrink-0"
+                    className="px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2 cursor-pointer shrink-0"
                     style={{
-                      backgroundColor: "var(--surface-3)",
-                      color: "var(--text-primary)",
+                      backgroundColor: "var(--accent-container)",
+                      color: "var(--on-accent-container)",
                     }}
                   >
-                    Find Duplicates
+                    <Icon name="search" size={18} />
+                    <span>Find Duplicates</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-base font-bold">Monitored Music Folders</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void scanFolders()}
+                      className="px-3.5 py-2 rounded-full text-xs font-medium cursor-pointer"
+                      style={{
+                        backgroundColor: "var(--surface-2)",
+                        color: "var(--text-primary)",
+                      }}
+                    >
+                      Rescan Now
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleBrowseFolder()}
+                      className="px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                      style={{
+                        backgroundColor: "var(--accent)",
+                        color: "var(--on-accent)",
+                      }}
+                    >
+                      <Icon name="add" size={18} />
+                      <span>Add Folder</span>
+                    </button>
+                  </div>
+                </div>
+
+                {!isTauriRuntime() && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={folderInput}
+                      onChange={(e) => setFolderInput(e.target.value)}
+                      placeholder="/path/to/music..."
+                      className="flex-1 px-4 py-2 rounded-full text-xs outline-none"
+                      style={{
+                        backgroundColor: "var(--surface-2)",
+                        border: "1px solid var(--outline)",
+                      }}
+                    />
+                  </div>
+                )}
+
+                {settings.folders.length === 0 ? (
+                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                    No folders configured. Click &apos;Add Folder&apos; to add your music.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {settings.folders.map((folder) => (
+                      <div
+                        key={folder}
+                        className="px-3.5 py-3 rounded-xl flex items-center justify-between gap-3"
+                        style={{ backgroundColor: "var(--surface-2)" }}
+                      >
+                        <span className="text-sm font-medium truncate">{folder}</span>
+                        <button
+                          type="button"
+                          onClick={() => void removeFolder(folder)}
+                          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer shrink-0"
+                          style={{ color: "var(--danger)" }}
+                          title="Remove folder"
+                          aria-label={`Remove ${folder}`}
+                        >
+                          <Icon name="remove" size={20} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {activeTab === "lyrics" && (
+              <>
+                <div
+                  className="p-[18px] rounded-2xl space-y-3"
+                  style={{ backgroundColor: "var(--surface-2)" }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-bold">Spicy Lyrics API Key</span>
+                    <span
+                      className="text-xs font-semibold"
+                      style={{
+                        color: settings.spicyLyricsApiKey.trim()
+                          ? "var(--accent)"
+                          : "var(--text-secondary)",
+                      }}
+                    >
+                      {settings.spicyLyricsApiKey.trim()
+                        ? "Configured"
+                        : "Not configured"}
+                    </span>
+                  </div>
+
+                  <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                    Enter your Spicy Lyrics API key (sl_pk_... or sl_sk_...) to fetch
+                    word-by-word syllable-synced lyrics.
+                  </p>
+
+                  <div className="text-xs flex items-center gap-1.5">
+                    <span style={{ color: "var(--text-secondary)" }}>Get a key at</span>
+                    <a
+                      href="https://developers.spicylyrics.org/"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium hover:underline"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      https://developers.spicylyrics.org/
+                    </a>
+                  </div>
+
+                  <div className="relative flex items-center">
+                    <input
+                      type={showApiKey ? "text" : "password"}
+                      value={apiKeyInput}
+                      onChange={(e) => {
+                        setApiKeyInput(e.target.value);
+                        setKeyStatusMsg(null);
+                      }}
+                      placeholder="sl_pk_... or sl_sk_..."
+                      className="w-full pl-3.5 pr-16 py-2.5 rounded-xl text-sm outline-none"
+                      style={{
+                        backgroundColor: "var(--surface-0)",
+                        border: "1px solid var(--outline-strong)",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey((v) => !v)}
+                      className="absolute right-2 px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer hover:bg-[var(--surface-variant)]"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      {showApiKey ? "Hide" : "Show"}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      disabled={apiKeyInput.trim() === settings.spicyLyricsApiKey}
+                      onClick={() => {
+                        const trimmed = apiKeyInput.trim();
+                        setApiKeyInput(trimmed);
+                        void saveSettings({ ...settings, spicyLyricsApiKey: trimmed });
+                        setKeyStatusMsg(trimmed ? "API key saved." : "API key cleared.");
+                      }}
+                      className="px-4 py-2 rounded-full text-xs font-semibold cursor-pointer disabled:opacity-45"
+                      style={{
+                        backgroundColor: "var(--accent)",
+                        color: "var(--on-accent)",
+                      }}
+                    >
+                      Save Key
+                    </button>
+
+                    {(settings.spicyLyricsApiKey || apiKeyInput) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setApiKeyInput("");
+                          void saveSettings({ ...settings, spicyLyricsApiKey: "" });
+                          setKeyStatusMsg("API key cleared.");
+                        }}
+                        className="px-4 py-2 rounded-full text-xs font-medium cursor-pointer"
+                        style={{ border: "1px solid var(--outline-strong)" }}
+                      >
+                        Clear
+                      </button>
+                    )}
+
+                    {keyStatusMsg && (
+                      <span className="text-xs" style={{ color: "var(--accent)" }}>
+                        {keyStatusMsg}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className="p-[18px] rounded-2xl flex items-center justify-between gap-4"
+                  style={{ backgroundColor: "var(--surface-2)" }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-base font-bold">Show Romanized Lyrics</div>
+                    <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                      Display romanized pronunciation below non-Latin lyrics when available
+                    </div>
+                  </div>
+                  <M3Switch
+                    checked={showRomanized}
+                    onChange={(next) => {
+                      setShowRomanized(next);
+                      setShowRomanizedPref(next);
+                    }}
+                    label="Show Romanized Lyrics"
+                  />
+                </div>
+
+                <div
+                  className="p-[18px] rounded-2xl flex items-center justify-between gap-4"
+                  style={{ backgroundColor: "var(--surface-2)" }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-base font-bold">Lyrics Cache</div>
+                    <div
+                      className="text-xs mt-0.5"
+                      style={{
+                        color: cacheStatusMsg ? "var(--accent)" : "var(--text-secondary)",
+                      }}
+                    >
+                      {cacheStatusMsg ??
+                        "Clear cached Spicy Lyrics data stored on disk and in memory"}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (currentTrackId) {
+                        void refreshLyrics(currentTrackId);
+                      }
+                      setCacheStatusMsg("Lyrics cache cleared.");
+                    }}
+                    className="px-4 py-2 rounded-full text-xs font-semibold cursor-pointer shrink-0"
+                    style={{
+                      backgroundColor: "var(--accent-container)",
+                      color: "var(--on-accent-container)",
+                    }}
+                  >
+                    Clear Lyrics Cache
                   </button>
                 </div>
               </>
             )}
 
-            {activeTab === "lyrics" && (
-              <div
-                className="p-4 rounded-2xl space-y-3"
-                style={{
-                  backgroundColor: "var(--surface-1)",
-                  border: "1px solid var(--outline)",
-                }}
-              >
-                <div>
-                  <div className="text-sm font-semibold">SpicyLyrics API Key</div>
-                  <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                    Optional API key for syllable-synced karaoke lyrics lookup. Embedded
-                    tags and local .lrc files work automatically without a key.
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type={showApiKey ? "text" : "password"}
-                    value={settings.spicyLyricsApiKey}
-                    onChange={(e) =>
-                      void saveSettings({
-                        ...settings,
-                        spicyLyricsApiKey: e.target.value,
-                      })
-                    }
-                    placeholder="Enter SpicyLyrics API key…"
-                    className="flex-1 px-3.5 py-2 rounded-xl text-sm outline-none"
-                    style={{
-                      backgroundColor: "var(--surface-2)",
-                      border: "1px solid var(--outline)",
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey((v) => !v)}
-                    className="px-3.5 py-2 rounded-xl text-xs font-medium cursor-pointer"
-                    style={{ backgroundColor: "var(--surface-3)" }}
-                  >
-                    {showApiKey ? "Hide" : "Show"}
-                  </button>
-                </div>
-              </div>
-            )}
-
             {activeTab === "appearance" && (
-              <div className="space-y-4">
-                <div
-                  className="p-4 rounded-2xl space-y-3"
-                  style={{
-                    backgroundColor: "var(--surface-1)",
-                    border: "1px solid var(--outline)",
-                  }}
-                >
-                  <div className="text-sm font-semibold">Theme</div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {(["dark", "light", "system"] as ThemeMode[]).map((mode) => {
-                      const active = settings.theme === mode;
-                      return (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => void setTheme(mode)}
-                          className="px-4 py-1.5 rounded-full text-xs font-semibold capitalize cursor-pointer"
+              <>
+                <div className="text-base font-bold">Curated Color Themes</div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {CURATED_PRESETS.map((preset) => {
+                    const isSelected = selectedPresetId === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPresetId(preset.id);
+                          void saveSettings({
+                            ...settings,
+                            theme: preset.mode,
+                            adaptiveAccent: preset.adaptive,
+                          });
+                        }}
+                        className="p-3.5 rounded-2xl flex items-center gap-3 text-left cursor-pointer transition-colors"
+                        style={{
+                          backgroundColor: isSelected
+                            ? "color-mix(in srgb, var(--surface-3) 70%, var(--surface-2))"
+                            : "var(--surface-2)",
+                          border: isSelected
+                            ? "2px solid var(--accent)"
+                            : "1px solid var(--outline-strong)",
+                        }}
+                      >
+                        <div
+                          className="w-[42px] h-[42px] rounded-full shrink-0 flex items-center justify-center border"
                           style={{
-                            backgroundColor: active
-                              ? "var(--accent)"
-                              : "var(--surface-2)",
-                            color: active
-                              ? "var(--on-accent)"
-                              : "var(--text-secondary)",
-                            border: "1px solid var(--outline)",
+                            backgroundColor: preset.previewBackground,
+                            borderColor: "var(--outline-strong)",
                           }}
                         >
-                          {mode}
-                        </button>
-                      );
-                    })}
+                          <span
+                            className="w-[18px] h-[18px] rounded-full"
+                            style={{ backgroundColor: preset.previewAccent }}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div
+                            className="text-sm truncate"
+                            style={{ fontWeight: isSelected ? 700 : 600 }}
+                          >
+                            {preset.name}
+                          </div>
+                          <div
+                            className="text-xs leading-snug mt-0.5 line-clamp-2"
+                            style={{ color: "var(--text-secondary)" }}
+                          >
+                            {preset.description}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="h-px" style={{ backgroundColor: "var(--outline)" }} />
+
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-medium">Follow System Dark/Light Mode</div>
+                    <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                      Adapts automatically to macOS/Windows system theme
+                    </div>
                   </div>
-
-                  <label className="flex items-center gap-2.5 cursor-pointer pt-1">
-                    <input
-                      type="checkbox"
-                      checked={settings.adaptiveAccent}
-                      onChange={(e) => void setAdaptiveAccent(e.target.checked)}
-                      className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
-                    />
-                    <span className="text-sm">Album-adaptive accent color</span>
-                  </label>
+                  <M3Switch
+                    checked={settings.theme === "system"}
+                    onChange={(follow) =>
+                      void setTheme(follow ? "system" : "dark")
+                    }
+                    label="Follow System Dark/Light Mode"
+                  />
                 </div>
 
-                <div
-                  className="p-4 rounded-2xl space-y-2.5"
-                  style={{
-                    backgroundColor: "var(--surface-1)",
-                    border: "1px solid var(--outline)",
-                  }}
-                >
-                  <div className="text-sm font-semibold">System Behavior</div>
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.minimizeToTray}
-                      onChange={(e) =>
-                        void saveSettings({
-                          ...settings,
-                          minimizeToTray: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
-                    />
-                    <span className="text-sm">Minimize to system tray</span>
-                  </label>
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.showMiniPlayerOnClose}
-                      onChange={(e) =>
-                        void saveSettings({
-                          ...settings,
-                          showMiniPlayerOnClose: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
-                    />
-                    <span className="text-sm">Show mini player when closing window</span>
-                  </label>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-medium">Dynamic Album Colors</div>
+                    <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                      Tint surfaces and accents from the playing track&apos;s artwork
+                    </div>
+                  </div>
+                  <M3Switch
+                    checked={settings.adaptiveAccent}
+                    onChange={(enabled) => void setAdaptiveAccent(enabled)}
+                    label="Dynamic Album Colors"
+                  />
                 </div>
-              </div>
+
+                <div className="h-px" style={{ backgroundColor: "var(--outline)" }} />
+                <div className="text-base font-bold">System Tray &amp; Window</div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">Minimize to System Tray</div>
+                    <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                      Hides the window from dock/taskbar into the system tray when minimized
+                    </div>
+                  </div>
+                  <M3Switch
+                    checked={settings.minimizeToTray}
+                    onChange={(minimizeToTray) =>
+                      void saveSettings({ ...settings, minimizeToTray })
+                    }
+                    label="Minimize to System Tray"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium">Close to Mini Player</div>
+                    <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                      Keeps the music player running in the floating mini player on close
+                    </div>
+                  </div>
+                  <M3Switch
+                    checked={settings.showMiniPlayerOnClose}
+                    onChange={(showMiniPlayerOnClose) =>
+                      void saveSettings({ ...settings, showMiniPlayerOnClose })
+                    }
+                    label="Close to Mini Player"
+                  />
+                </div>
+              </>
             )}
 
             {activeTab === "keybindings" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {KEYBINDING_LABELS.map((item) => {
-                  const isCapturing = capturingKey === item.key;
-                  return (
-                    <div
-                      key={item.key}
-                      className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs"
-                      style={{
-                        backgroundColor: "var(--surface-1)",
-                        border: "1px solid var(--outline)",
-                      }}
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-base font-bold">Keyboard Shortcuts</div>
+                    <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                      Customize application hotkeys. Press Esc during recording to cancel.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecordingKey(null);
+                      setKeyConflictMsg(null);
+                      void saveSettings({ ...settings, keybindings: DEFAULT_KEYBINDINGS });
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-medium cursor-pointer shrink-0"
+                    style={{ border: "1px solid var(--outline-strong)" }}
+                  >
+                    Reset All to Defaults
+                  </button>
+                </div>
+
+                {keyConflictMsg && (
+                  <div
+                    className="px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-3 text-xs"
+                    style={{
+                      backgroundColor: "var(--danger-container)",
+                      border: "1px solid var(--danger)",
+                      color: "var(--danger)",
+                    }}
+                  >
+                    <span>{keyConflictMsg}</span>
+                    <button
+                      type="button"
+                      onClick={() => setKeyConflictMsg(null)}
+                      className="w-6 h-6 rounded-full flex items-center justify-center cursor-pointer"
                     >
-                      <span className="font-medium">{item.label}</span>
-                      <button
-                        type="button"
-                        onClick={() => setCapturingKey(item.key)}
-                        onKeyDown={(e) => {
-                          if (!isCapturing) return;
-                          e.preventDefault();
-                          void saveSettings({
-                            ...settings,
-                            keybindings: {
-                              ...settings.keybindings,
-                              [item.key]: e.code,
-                            },
-                          });
-                          setCapturingKey(null);
-                        }}
-                        className="px-2.5 py-1 rounded-lg font-mono text-[11px] cursor-pointer"
+                      <Icon name="close" size={16} />
+                    </button>
+                  </div>
+                )}
+
+                {(["Playback", "Audio", "View"] as const).map((category) => {
+                  const items = KEYBINDING_ITEMS.filter((i) => i.category === category);
+                  return (
+                    <div key={category} className="space-y-2">
+                      <div
+                        className="text-[11px] font-bold uppercase tracking-wider pt-1"
+                        style={{ color: "var(--accent)" }}
+                      >
+                        {category}
+                      </div>
+                      <div
+                        className="px-4 py-2 rounded-2xl border"
                         style={{
-                          backgroundColor: isCapturing
-                            ? "var(--accent)"
-                            : "var(--surface-3)",
-                          color: isCapturing
-                            ? "var(--on-accent)"
-                            : "var(--text-primary)",
+                          backgroundColor: "var(--surface-2)",
+                          borderColor: "var(--outline)",
                         }}
                       >
-                        {isCapturing ? "Press key…" : settings.keybindings[item.key]}
-                      </button>
+                        {items.map((item, idx) => {
+                          const isRecording = recordingKey === item.key;
+                          return (
+                            <div key={item.key}>
+                              <div className="py-2 flex items-center justify-between gap-3">
+                                <span className="text-sm font-medium">{item.title}</span>
+                                <div className="flex items-center gap-2">
+                                  {isRecording ? (
+                                    <span
+                                      className="px-3 py-1.5 rounded-[10px] text-xs font-bold border-2"
+                                      style={{
+                                        backgroundColor: "var(--accent-container)",
+                                        borderColor: "var(--accent)",
+                                        color: "var(--on-accent-container)",
+                                      }}
+                                    >
+                                      Press keys... (Esc)
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span
+                                        className="px-2.5 py-1 rounded-[10px] font-mono text-xs font-semibold"
+                                        style={{
+                                          backgroundColor: "var(--surface-3)",
+                                          border: "1px solid var(--outline)",
+                                          color: "var(--text-secondary)",
+                                        }}
+                                      >
+                                        {formatKeyCode(settings.keybindings[item.key])}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setKeyConflictMsg(null);
+                                          setRecordingKey(item.key);
+                                        }}
+                                        className="h-8 px-3 rounded-[10px] text-xs font-medium cursor-pointer"
+                                        style={{ border: "1px solid var(--outline-strong)" }}
+                                      >
+                                        Rebind
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setKeyConflictMsg(null);
+                                          void saveSettings({
+                                            ...settings,
+                                            keybindings: {
+                                              ...settings.keybindings,
+                                              [item.key]: DEFAULT_KEYBINDINGS[item.key],
+                                            },
+                                          });
+                                        }}
+                                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[var(--surface-variant)] cursor-pointer"
+                                        style={{ color: "var(--text-secondary)" }}
+                                        title="Reset shortcut"
+                                        aria-label={`Reset ${item.title}`}
+                                      >
+                                        <Icon name="restore" size={16} />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              {idx < items.length - 1 && (
+                                <div
+                                  className="h-px my-0.5"
+                                  style={{ backgroundColor: "var(--outline)" }}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
-              </div>
+              </>
             )}
 
             {activeTab === "stats" && (
-              <div
-                className="p-5 rounded-2xl flex items-center justify-between gap-4"
-                style={{
-                  backgroundColor: "var(--surface-1)",
-                  border: "1px solid var(--outline)",
-                }}
-              >
-                <div>
-                  <div className="text-sm font-semibold">Listening Statistics</div>
-                  <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                    View your total listening time, top tracks, and top artists
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    className="p-4 rounded-2xl"
+                    style={{
+                      backgroundColor: "color-mix(in srgb, var(--accent-container) 40%, transparent)",
+                    }}
+                  >
+                    <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                      Total Plays
+                    </div>
+                    <div
+                      className="text-[28px] leading-9 font-bold mt-0.5 tabular-nums"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      {stats?.totalPlays ?? 0}
+                    </div>
+                  </div>
+
+                  <div
+                    className="p-4 rounded-2xl"
+                    style={{
+                      backgroundColor: "color-mix(in srgb, var(--accent-container) 40%, transparent)",
+                    }}
+                  >
+                    <div className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+                      Time Listened
+                    </div>
+                    <div
+                      className="text-[28px] leading-9 font-bold mt-0.5 tabular-nums"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      {((stats?.totalPlayTimeMs ?? 0) / 3_600_000).toFixed(1)} hrs
+                    </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => openDialog("stats")}
-                  className="px-4 py-2 rounded-full text-xs font-semibold cursor-pointer shrink-0"
-                  style={{
-                    backgroundColor: "var(--accent)",
-                    color: "var(--on-accent)",
-                  }}
-                >
-                  Open Stats
-                </button>
-              </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-base font-bold">Top Played Tracks</span>
+                  <button
+                    type="button"
+                    onClick={() => openDialog("stats")}
+                    className="text-xs font-semibold cursor-pointer hover:underline"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    Detailed Breakdown
+                  </button>
+                </div>
+
+                {!stats || stats.topTracks.length === 0 ? (
+                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                    No listening stats recorded yet. Play some tracks to see analytics!
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {stats.topTracks.slice(0, 5).map((item, idx) => (
+                      <div
+                        key={item.track.id}
+                        className="p-3 rounded-xl flex items-center justify-between gap-3"
+                        style={{ backgroundColor: "var(--surface-2)" }}
+                      >
+                        <span className="text-sm font-semibold truncate">
+                          #{idx + 1} &nbsp;{item.track.title || "Unknown"}
+                        </span>
+                        <span
+                          className="text-xs font-medium tabular-nums shrink-0"
+                          style={{ color: "var(--accent)" }}
+                        >
+                          {item.playCount} plays
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="text-base font-bold pt-1">Top Artists</div>
+                <div className="space-y-2">
+                  {(stats?.topArtists ?? []).slice(0, 5).map((item, idx) => (
+                    <div
+                      key={item.artist}
+                      className="p-3 rounded-xl flex items-center justify-between gap-3"
+                      style={{ backgroundColor: "var(--surface-2)" }}
+                    >
+                      <span className="text-sm font-semibold truncate">
+                        #{idx + 1} &nbsp;{item.artist}
+                      </span>
+                      <span
+                        className="text-xs font-medium tabular-nums shrink-0"
+                        style={{ color: "var(--accent)" }}
+                      >
+                        {item.playCount} plays
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
 
             {activeTab === "about" && (
-              <div
-                className="p-6 rounded-2xl flex flex-col items-center text-center gap-3"
-                style={{
-                  backgroundColor: "var(--surface-1)",
-                  border: "1px solid var(--outline)",
-                }}
-              >
+              <div className="flex flex-col items-center text-center gap-4 pt-2">
                 <img
                   src={appIconUrl}
                   alt="Umimuko Music"
-                  className="w-16 h-16 rounded-2xl object-contain"
+                  className="w-16 h-16 object-contain app-brand-icon"
                   draggable={false}
                 />
-                <div>
-                  <h3 className="text-lg font-bold">Umimuko Music</h3>
-                  <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                <div className="space-y-1">
+                  <h3 className="text-[28px] leading-9 font-bold">Umimuko Music</h3>
+                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
                     Version 0.26.1
                   </p>
                 </div>
-                <p className="text-xs max-w-md" style={{ color: "var(--text-secondary)" }}>
-                  Desktop music player powered by a pure-Rust audio engine, 10-band
-                  biquad EQ, gapless & crossfade playback, and SpicyLyrics karaoke.
+
+                <p className="text-sm max-w-md" style={{ color: "var(--text-secondary)" }}>
+                  An ultra-fast, local-first audio player built with Rust, Tauri v2,
+                  React, Symphonia, and SpicyLyrics.
+                </p>
+
+                <div className="w-full h-px my-2" style={{ backgroundColor: "var(--outline)" }} />
+
+                <div className="space-y-1">
+                  <div className="text-sm font-bold">Open Source Technologies</div>
+                  <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                    Tauri v2 · Symphonia · Lofty · SQLite · React · Tailwind CSS
+                  </div>
+                </div>
+
+                <a
+                  href="https://github.com/real-Phraser/Umimuko-Music"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 text-sm font-medium hover:underline"
+                  style={{ color: "var(--accent)" }}
+                >
+                  <img
+                    src={githubIconUrl}
+                    alt="GitHub"
+                    className="w-[18px] h-[18px] object-contain app-brand-icon"
+                    draggable={false}
+                  />
+                  <span>github.com/real-Phraser/Umimuko-Music</span>
+                </a>
+
+                <p className="text-xs pt-2" style={{ color: "var(--text-secondary)" }}>
+                  Crafted with care by Phraser &amp; Contributors
                 </p>
               </div>
             )}
