@@ -735,5 +735,12 @@ mod tests {
         db.set_setting("theme", "dark").unwrap();
         db.set_setting("theme", "light").unwrap();
         assert_eq!(db.get_setting("theme").unwrap().as_deref(), Some("light"));
+
+        let settings_json = r#"{"minimizeToTray":true,"closeToTray":true,"startupIntro":false,"playbackRate":1.25}"#;
+        db.set_setting("app_settings", settings_json).unwrap();
+        assert_eq!(
+            db.get_setting("app_settings").unwrap().as_deref(),
+            Some(settings_json)
+        );
     }
 }

@@ -1,5 +1,7 @@
 use crate::audio::dsp::{CrossfadeCurve, EqConfig, EQ_BAND_COUNT};
-use crate::audio::engine::{AudioEngine, EngineSnapshot, PlaybackStatus};
+use crate::audio::engine::{
+    AudioEngine, EngineSnapshot, PlaybackStatus, MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE,
+};
 use crate::audio::queue::{RepeatMode, TrackRef};
 use crate::library::db::{Database, EqPresetRecord, PlaylistRecord, TrackRecord};
 use crate::library::duplicates::{DuplicateDetector, DuplicateMatchKind};
@@ -203,6 +205,14 @@ impl Default for KeybindingsConfigDto {
     }
 }
 
+fn default_startup_intro() -> bool {
+    true
+}
+
+fn default_playback_rate() -> f32 {
+    1.0
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettingsDto {
@@ -214,7 +224,15 @@ pub struct AppSettingsDto {
     pub crossfade: CrossfadeConfigDto,
     pub equalizer: EqualizerConfigDto,
     pub keybindings: KeybindingsConfigDto,
+    #[serde(default)]
     pub minimize_to_tray: bool,
+    #[serde(default)]
+    pub close_to_tray: bool,
+    #[serde(default = "default_startup_intro")]
+    pub startup_intro: bool,
+    #[serde(default = "default_playback_rate")]
+    pub playback_rate: f32,
+    #[serde(default)]
     pub show_mini_player_on_close: bool,
 }
 
@@ -229,6 +247,9 @@ impl Default for AppSettingsDto {
             equalizer: EqualizerConfigDto::default(),
             keybindings: KeybindingsConfigDto::default(),
             minimize_to_tray: false,
+            close_to_tray: false,
+            startup_intro: true,
+            playback_rate: 1.0,
             show_mini_player_on_close: false,
         }
     }
@@ -732,6 +753,15 @@ pub fn apply_crossfade_to_engine(engine: &AudioEngine, config: &CrossfadeConfigD
         0.0
     };
     engine.set_crossfade(secs, CrossfadeCurve::EqualPower);
+}
+
+pub fn apply_playback_rate_to_engine(engine: &AudioEngine, rate: f32) {
+    let clamped = if rate.is_finite() {
+        rate.clamp(MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE)
+    } else {
+        1.0
+    };
+    engine.set_playback_rate(clamped);
 }
 
 fn playlist_record_to_dto(rec: PlaylistRecord, pinned_ids: &HashSet<String>) -> PlaylistDto {
@@ -1727,11 +1757,19 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettingsDto, String
 #[tauri::command]
 pub fn save_settings(
     state: State<'_, AppState>,
-    settings: AppSettingsDto,
+    mut settings: AppSettingsDto,
 ) -> Result<AppSettingsDto, String> {
+    settings.playback_rate = if settings.playback_rate.is_finite() {
+        settings
+            .playback_rate
+            .clamp(MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE)
+    } else {
+        1.0
+    };
     if let Some(ref engine) = state.engine {
         apply_eq_to_engine(engine, &settings.equalizer);
         apply_crossfade_to_engine(engine, &settings.crossfade);
+        apply_playback_rate_to_engine(engine, settings.playback_rate);
     }
     let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     save_app_settings_to_db(&db, &settings)?;
@@ -1756,4 +1794,65 @@ pub fn toggle_mini_player(app: AppHandle, open: Option<bool>) -> Result<(), Stri
         win.hide().map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_settings_roundtrip_and_legacy_defaults() {
+        let db = Database::open_in_memory().unwrap();
+
+        let defaults = load_app_settings(&db);
+        assert!(!defaults.minimize_to_tray);
+        assert!(!defaults.close_to_tray);
+        assert!(defaults.startup_intro);
+        assert!((defaults.playback_rate - 1.0).abs() < f32::EPSILON);
+
+        let custom = AppSettingsDto {
+            minimize_to_tray: true,
+            close_to_tray: true,
+            startup_intro: false,
+            playback_rate: 1.5,
+            ..AppSettingsDto::default()
+        };
+        save_app_settings_to_db(&db, &custom).unwrap();
+
+        let loaded = load_app_settings(&db);
+        assert!(loaded.minimize_to_tray);
+        assert!(loaded.close_to_tray);
+        assert!(!loaded.startup_intro);
+        assert!((loaded.playback_rate - 1.5).abs() < f32::EPSILON);
+
+        // Legacy JSON missing new fields should still deserialize with defaults.
+        let legacy_json = r#"{
+            "theme": "light",
+            "adaptiveAccent": false,
+            "folders": [],
+            "spicyLyricsApiKey": "",
+            "crossfade": { "enabled": false, "durationMs": 3000, "gapless": true },
+            "equalizer": { "enabled": false, "preampDb": 0.0, "bands": [0,0,0,0,0,0,0,0,0,0], "presetName": "Flat" },
+            "keybindings": {
+                "playPause": "Space",
+                "nextTrack": "ArrowRight",
+                "prevTrack": "ArrowLeft",
+                "volumeUp": "ArrowUp",
+                "volumeDown": "ArrowDown",
+                "toggleMute": "KeyM",
+                "toggleLyrics": "KeyL",
+                "toggleQueue": "KeyQ",
+                "focusSearch": "KeyF"
+            },
+            "minimizeToTray": true,
+            "showMiniPlayerOnClose": false
+        }"#;
+        db.set_setting(SETTINGS_KEY_APP, legacy_json).unwrap();
+        let migrated = load_app_settings(&db);
+        assert_eq!(migrated.theme, "light");
+        assert!(migrated.minimize_to_tray);
+        assert!(!migrated.close_to_tray);
+        assert!(migrated.startup_intro);
+        assert!((migrated.playback_rate - 1.0).abs() < f32::EPSILON);
+    }
 }
