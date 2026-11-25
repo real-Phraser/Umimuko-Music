@@ -30,6 +30,9 @@ object SpicyLyricsService {
     private const val USER_AGENT = "UmimukoMusic/0.26.0 ( https://github.com/real-Phraser )"
     private const val CACHE_SUBDIR = "spicy-lyrics-v2"
     private const val ITUNES_SEARCH_LIMIT = 25
+    private const val ITUNES_ARTIST_SEARCH_LIMIT = 5
+    private const val ITUNES_LOOKUP_LIMIT = 200
+    private const val MIN_ARTIST_LOOKUP_SCORE = 30
     private const val MAX_DURATION_DIFF_MS = 15_000L
     private const val MIN_MATCH_SCORE = 40
 
@@ -92,7 +95,7 @@ object SpicyLyricsService {
         val currentKey = apiKey
         if (currentKey.isNotBlank()) {
             val online = withContext(Dispatchers.IO) {
-                fetchFromSpicyApi(song.artist, song.title, song.durationMs, currentKey)
+                fetchFromSpicyApi(song.artist, song.title, song.durationMs, currentKey, song.album)
             }
             if (online != null && online.first.lines.isNotEmpty()) {
                 withContext(Dispatchers.IO) { writeRawJsonToDiskCache(song, online.second) }
@@ -122,9 +125,10 @@ object SpicyLyricsService {
         artist: String,
         title: String,
         durationMs: Long,
-        bearerToken: String
+        bearerToken: String,
+        album: String = ""
     ): Pair<SpicyLyrics, String>? {
-        val trackId = resolveItunesTrackId(artist, title, durationMs) ?: return null
+        val trackId = resolveItunesTrackId(artist, title, durationMs, album) ?: return null
         val endpoint = "https://api.spicylyrics.org/v1/lyrics/$trackId"
         return try {
             val request = HttpRequest.newBuilder()
@@ -148,7 +152,12 @@ object SpicyLyricsService {
         }
     }
 
-    internal fun resolveItunesTrackId(artist: String, title: String, durationMs: Long): Long? {
+    internal fun resolveItunesTrackId(
+        artist: String,
+        title: String,
+        durationMs: Long,
+        album: String = ""
+    ): Long? {
         val cleanTitle = title.trim()
         if (cleanTitle.isBlank()) return null
 
@@ -188,21 +197,34 @@ object SpicyLyricsService {
         for (url in candidateUrls) {
             queryItunesSearch(url, artist, title, durationMs)?.let { return it }
         }
+
+        if (primaryArtist.isNotEmpty()) {
+            lookupItunesTrackByArtist(primaryArtist, artist, title, durationMs)?.let { return it }
+        }
+
+        if (album.isNotBlank()) {
+            lookupItunesTrackByAlbum(primaryArtist, album, artist, title, durationMs)?.let { return it }
+        }
+
         return null
     }
 
-    private fun buildItunesSearchUrl(term: String, attribute: String? = null): String {
+    private fun buildItunesSearchUrl(
+        term: String,
+        entity: String = "song",
+        attribute: String? = null,
+        limit: Int = ITUNES_SEARCH_LIMIT
+    ): String {
         val encoded = URLEncoder.encode(term, StandardCharsets.UTF_8)
         val attrParam = if (attribute != null) "&attribute=$attribute" else ""
-        return "https://itunes.apple.com/search?term=$encoded&entity=song$attrParam&limit=$ITUNES_SEARCH_LIMIT"
+        return "https://itunes.apple.com/search?term=$encoded&entity=$entity$attrParam&limit=$limit"
     }
 
-    private fun queryItunesSearch(
-        url: String,
-        artist: String,
-        title: String,
-        durationMs: Long
-    ): Long? {
+    private fun buildItunesLookupUrl(id: Long, entity: String = "song", limit: Int = ITUNES_LOOKUP_LIMIT): String {
+        return "https://itunes.apple.com/lookup?id=$id&entity=$entity&limit=$limit"
+    }
+
+    private fun fetchItunesJson(url: String): String? {
         return try {
             val request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -212,14 +234,159 @@ object SpicyLyricsService {
                 .GET()
                 .build()
             val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-            if (response.statusCode() in 200..299) {
-                pickBestItunesTrackId(response.body(), artist, title, durationMs)
-            } else {
-                null
-            }
+            if (response.statusCode() in 200..299) response.body() else null
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun queryItunesSearch(
+        url: String,
+        artist: String,
+        title: String,
+        durationMs: Long
+    ): Long? {
+        val body = fetchItunesJson(url) ?: return null
+        return pickBestItunesTrackId(body, artist, title, durationMs)
+    }
+
+    private fun lookupItunesTrackByArtist(
+        primaryArtist: String,
+        artist: String,
+        title: String,
+        durationMs: Long
+    ): Long? {
+        val artistSearchUrl = buildItunesSearchUrl(
+            term = primaryArtist,
+            entity = "musicArtist",
+            limit = ITUNES_ARTIST_SEARCH_LIMIT
+        )
+        val artistJson = fetchItunesJson(artistSearchUrl) ?: return null
+        val artistIds = extractMatchingItunesArtistIds(artistJson, primaryArtist)
+        for (artistId in artistIds) {
+            val lookupUrl = buildItunesLookupUrl(artistId, entity = "song", limit = ITUNES_LOOKUP_LIMIT)
+            queryItunesSearch(lookupUrl, artist, title, durationMs)?.let { return it }
+        }
+        return null
+    }
+
+    private fun lookupItunesTrackByAlbum(
+        primaryArtist: String,
+        album: String,
+        artist: String,
+        title: String,
+        durationMs: Long
+    ): Long? {
+        val cleanAlbum = album.trim()
+        if (cleanAlbum.isEmpty()) return null
+        val albumQuery = listOf(primaryArtist, cleanAlbum)
+            .filter { it.isNotEmpty() }
+            .joinToString(" ")
+        val albumSearchUrl = buildItunesSearchUrl(
+            term = albumQuery,
+            entity = "album",
+            limit = ITUNES_ARTIST_SEARCH_LIMIT
+        )
+        val albumJson = fetchItunesJson(albumSearchUrl) ?: return null
+        val collectionIds = extractMatchingItunesAlbumIds(albumJson, primaryArtist, cleanAlbum)
+        for (collectionId in collectionIds) {
+            val lookupUrl = buildItunesLookupUrl(collectionId, entity = "song", limit = ITUNES_LOOKUP_LIMIT)
+            queryItunesSearch(lookupUrl, artist, title, durationMs)?.let { return it }
+        }
+        return null
+    }
+
+    internal fun extractMatchingItunesArtistIds(itunesJson: String, artist: String): List<Long> {
+        val root = SimpleJson.parse(itunesJson) as? Map<*, *> ?: return emptyList()
+        val results = root["results"] as? List<*> ?: return emptyList()
+        if (results.isEmpty()) return emptyList()
+
+        val rawArtist = artist.trim().lowercase()
+        val normArtist = normalizeForMatch(artist)
+        if (normArtist.isEmpty()) return emptyList()
+        val artistTokens = significantTokens(normArtist)
+
+        val matches = mutableListOf<Pair<Long, Int>>()
+        for (item in results) {
+            val map = item as? Map<*, *> ?: continue
+            val artistId = (map["artistId"] as? Number)?.toLong()?.takeIf { it > 0L } ?: continue
+            val rawArtistName = (map["artistName"] as? String).orEmpty().trim().lowercase()
+            val normCandidate = normalizeForMatch(rawArtistName)
+            val score = scoreArtistMatch(
+                rawArtist = rawArtist,
+                normArtist = normArtist,
+                artistTokens = artistTokens,
+                rawTrackArtist = rawArtistName,
+                normTrackArtist = normCandidate,
+                trackArtistTokens = significantTokens(normCandidate)
+            )?.takeIf { it >= MIN_ARTIST_LOOKUP_SCORE } ?: continue
+            matches.add(artistId to score)
+        }
+
+        return matches
+            .sortedByDescending { it.second }
+            .map { it.first }
+            .distinct()
+    }
+
+    internal fun extractMatchingItunesAlbumIds(
+        itunesJson: String,
+        artist: String,
+        album: String
+    ): List<Long> {
+        val root = SimpleJson.parse(itunesJson) as? Map<*, *> ?: return emptyList()
+        val results = root["results"] as? List<*> ?: return emptyList()
+        if (results.isEmpty()) return emptyList()
+
+        val rawAlbum = album.trim().lowercase()
+        val normAlbum = normalizeForMatch(album)
+        if (normAlbum.isEmpty()) return emptyList()
+        val albumHalves = splitTitleHalves(album)
+        val albumTokens = tokenize(normAlbum).toSet()
+
+        val rawArtist = artist.trim().lowercase()
+        val normArtist = normalizeForMatch(artist)
+        val artistTokens = significantTokens(normArtist)
+
+        val matches = mutableListOf<Pair<Long, Int>>()
+        for (item in results) {
+            val map = item as? Map<*, *> ?: continue
+            val collectionId = (map["collectionId"] as? Number)?.toLong()?.takeIf { it > 0L } ?: continue
+            val rawCollectionName = (map["collectionName"] as? String).orEmpty().trim().lowercase()
+            val normCollection = normalizeForMatch(rawCollectionName)
+            val albumScore = scoreTitleMatch(
+                rawTitle = rawAlbum,
+                normTitle = normAlbum,
+                titleHalves = albumHalves,
+                titleTokens = albumTokens,
+                rawTrack = rawCollectionName,
+                normTrack = normCollection,
+                trackHalves = splitTitleHalves(rawCollectionName),
+                trackTokens = tokenize(normCollection).toSet()
+            ) ?: continue
+
+            val artistScore = if (normArtist.isNotEmpty()) {
+                val rawArtistName = (map["artistName"] as? String).orEmpty().trim().lowercase()
+                val normCandidate = normalizeForMatch(rawArtistName)
+                scoreArtistMatch(
+                    rawArtist = rawArtist,
+                    normArtist = normArtist,
+                    artistTokens = artistTokens,
+                    rawTrackArtist = rawArtistName,
+                    normTrackArtist = normCandidate,
+                    trackArtistTokens = significantTokens(normCandidate)
+                ) ?: continue
+            } else {
+                0
+            }
+
+            matches.add(collectionId to (albumScore + artistScore))
+        }
+
+        return matches
+            .sortedByDescending { it.second }
+            .map { it.first }
+            .distinct()
     }
 
     internal fun pickBestItunesTrackId(
@@ -247,6 +414,8 @@ object SpicyLyricsService {
 
         for (item in results) {
             val map = item as? Map<*, *> ?: continue
+            val wrapperType = (map["wrapperType"] as? String)?.lowercase()
+            if (wrapperType == "artist" || wrapperType == "collection") continue
             val trackId = (map["trackId"] as? Number)?.toLong()?.takeIf { it > 0L } ?: continue
             val rawTrackName = (map["trackName"] as? String).orEmpty().trim().lowercase()
             val rawArtistName = (map["artistName"] as? String).orEmpty().trim().lowercase()

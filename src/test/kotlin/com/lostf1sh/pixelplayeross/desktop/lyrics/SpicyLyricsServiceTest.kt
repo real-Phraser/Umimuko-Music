@@ -313,4 +313,125 @@ class SpicyLyricsServiceTest {
         )
         assertNull(picked)
     }
+
+    @Test
+    fun extractsMatchingArtistIdsAndPicksTrackFromArtistLookupResponse() {
+        val artistSearchResponse = """
+            {
+              "resultCount": 2,
+              "results": [
+                {
+                  "wrapperType": "artist",
+                  "artistType": "Artist",
+                  "artistName": "Unrelated Tyler",
+                  "artistId": 111111111
+                },
+                {
+                  "wrapperType": "artist",
+                  "artistType": "Artist",
+                  "artistName": "Tyler, The Creator",
+                  "artistId": 420368335
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val artistIds = SpicyLyricsService.extractMatchingItunesArtistIds(
+            itunesJson = artistSearchResponse,
+            artist = "Tyler, The Creator"
+        )
+        assertEquals(listOf(420368335L), artistIds)
+
+        val artistLookupResponse = """
+            {
+              "resultCount": 3,
+              "results": [
+                {
+                  "wrapperType": "artist",
+                  "artistType": "Artist",
+                  "artistName": "Tyler, The Creator",
+                  "artistId": 420368335
+                },
+                {
+                  "wrapperType": "track",
+                  "kind": "song",
+                  "trackId": 1254572580,
+                  "artistName": "Tyler, The Creator",
+                  "trackName": "Foreword (feat. Rex Orange County)",
+                  "trackTimeMillis": 194000
+                },
+                {
+                  "wrapperType": "track",
+                  "kind": "song",
+                  "trackId": 1254572582,
+                  "artistName": "Tyler, The Creator",
+                  "trackName": "911 / Mr. Lonely (feat. Frank Ocean & Steve Lacy)",
+                  "trackTimeMillis": 255651
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val picked = SpicyLyricsService.pickBestItunesTrackId(
+            itunesJson = artistLookupResponse,
+            artist = "Tyler, The Creator",
+            title = "911",
+            durationMs = 255000L
+        )
+        assertEquals(1254572582L, picked)
+    }
+
+    @Test
+    fun ignoresWrapperTypeArtistEvenIfTrackIdIsPresentAndExtractsMatchingAlbumIds() {
+        val lookupWithArtistEntry = """
+            {
+              "resultCount": 1,
+              "results": [
+                {
+                  "wrapperType": "artist",
+                  "artistId": 420368335,
+                  "trackId": 420368335,
+                  "artistName": "Tyler, The Creator",
+                  "trackName": "911"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        assertNull(
+            SpicyLyricsService.pickBestItunesTrackId(
+                itunesJson = lookupWithArtistEntry,
+                artist = "Tyler, The Creator",
+                title = "911",
+                durationMs = 255000L
+            )
+        )
+
+        val albumSearchResponse = """
+            {
+              "resultCount": 2,
+              "results": [
+                {
+                  "wrapperType": "collection",
+                  "collectionId": 999999,
+                  "artistName": "Other Artist",
+                  "collectionName": "Flower Boy"
+                },
+                {
+                  "wrapperType": "collection",
+                  "collectionId": 1254572560,
+                  "artistName": "Tyler, The Creator",
+                  "collectionName": "Flower Boy"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val albumIds = SpicyLyricsService.extractMatchingItunesAlbumIds(
+            itunesJson = albumSearchResponse,
+            artist = "Tyler, The Creator",
+            album = "Flower Boy"
+        )
+        assertEquals(listOf(1254572560L), albumIds)
+    }
 }
