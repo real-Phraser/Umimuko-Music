@@ -37,6 +37,8 @@ interface StartupIntroProps {
  */
 export function StartupIntro({ onFinished }: StartupIntroProps) {
   const [fadingOut, setFadingOut] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const activeRef = useRef(false);
   const startedRef = useRef(false);
   const finishedRef = useRef(false);
   const timersRef = useRef<number[]>([]);
@@ -44,12 +46,13 @@ export function StartupIntro({ onFinished }: StartupIntroProps) {
   onFinishedRef.current = onFinished;
 
   const scheduleFadeAndFinish = (delayMs: number) => {
-    if (startedRef.current) return;
+    if (!activeRef.current || startedRef.current || finishedRef.current) return;
     startedRef.current = true;
     const t1 = window.setTimeout(() => {
+      if (!activeRef.current) return;
       setFadingOut(true);
       const t2 = window.setTimeout(() => {
-        if (!finishedRef.current) {
+        if (activeRef.current && !finishedRef.current) {
           finishedRef.current = true;
           onFinishedRef.current();
         }
@@ -60,11 +63,22 @@ export function StartupIntro({ onFinished }: StartupIntroProps) {
   };
 
   useEffect(() => {
+    activeRef.current = true;
+    startedRef.current = false;
+    finishedRef.current = false;
+
+    if (imgRef.current?.complete) {
+      scheduleFadeAndFinish(
+        imgRef.current.naturalWidth > 0 ? INTRO_DURATION_MS : 0
+      );
+    }
+
     const fallbackTimer = window.setTimeout(() => {
       scheduleFadeAndFinish(0);
     }, LOAD_TIMEOUT_MS);
 
     return () => {
+      activeRef.current = false;
       window.clearTimeout(fallbackTimer);
       for (const id of timersRef.current) {
         window.clearTimeout(id);
@@ -84,6 +98,7 @@ export function StartupIntro({ onFinished }: StartupIntroProps) {
       aria-hidden="true"
     >
       <img
+        ref={imgRef}
         src={startupIntroUrl}
         alt=""
         draggable={false}

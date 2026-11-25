@@ -125,18 +125,22 @@ function MainWindow() {
   };
 
   useEffect(() => {
+    let cancelled = false;
     void initSettings();
     let unlistenPlayer: (() => void) | undefined;
     let unlistenLibrary: (() => void) | undefined;
 
     void initPlayer().then((fn) => {
-      unlistenPlayer = fn;
+      if (cancelled) fn();
+      else unlistenPlayer = fn;
     });
     void initLibrary().then((fn) => {
-      unlistenLibrary = fn;
+      if (cancelled) fn();
+      else unlistenLibrary = fn;
     });
 
     return () => {
+      cancelled = true;
       unlistenPlayer?.();
       unlistenLibrary?.();
     };
