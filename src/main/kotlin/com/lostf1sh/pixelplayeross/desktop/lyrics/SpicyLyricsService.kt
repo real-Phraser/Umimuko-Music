@@ -27,7 +27,7 @@ object SpicyLyricsService {
     private const val PREFS_NODE = "com.lostf1sh.pixelplayeross.desktop.spicylyrics"
     private const val KEY_API_KEY = "apiKey"
     private const val KEY_SHOW_ROMANIZED = "showRomanized"
-    private const val USER_AGENT = "UmimukoMusic/0.26.0 ( https://github.com/real-Phraser )"
+    private const val USER_AGENT = "UmimukoMusic/0.26.1 ( https://github.com/real-Phraser )"
     private const val CACHE_SUBDIR = "spicy-lyrics-v2"
     private const val ITUNES_SEARCH_LIMIT = 25
     private const val ITUNES_ARTIST_SEARCH_LIMIT = 5

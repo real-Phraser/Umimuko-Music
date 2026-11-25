@@ -13,7 +13,7 @@ plugins {
 }
 
 group = "com.lostf1sh.pixelplayeross"
-version = "0.26.0"
+version = "0.26.1"
 
 val offlineVlcDir = layout.projectDirectory.dir("vlc")
 val isWindowsArm64 = System.getProperty("os.arch")?.lowercase().orEmpty() in listOf("aarch64", "arm64")
@@ -248,7 +248,7 @@ compose.desktop {
                 TargetFormat.Msi
             )
             packageName = "Umimuko Music"
-            packageVersion = "0.26.0"
+            packageVersion = "0.26.1"
             description = "Umimuko Music desktop music player"
             vendor = "Umimuko Music contributors"
             licenseFile.set(project.file("LICENSE"))
