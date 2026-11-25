@@ -1,7 +1,11 @@
-import { useLibraryStore, type LibraryTab, type NavSection } from "../store/useLibraryStore";
+import {
+  useLibraryStore,
+  type LibraryTab,
+  type NavSection,
+} from "../store/useLibraryStore";
 import { Icon, type IconName } from "./Icon";
 
-interface NavItem {
+export interface NavItem {
   id: string;
   label: string;
   icon: IconName;
@@ -9,7 +13,7 @@ interface NavItem {
   tab?: LibraryTab;
 }
 
-const NAV_ITEMS: NavItem[] = [
+export const SIDEBAR_NAV_ITEMS: NavItem[] = [
   { id: "home", label: "Home", icon: "home", nav: "home" },
   { id: "songs", label: "Tracks", icon: "library", nav: "library", tab: "songs" },
   { id: "albums", label: "Albums", icon: "album", nav: "library", tab: "albums" },
@@ -27,6 +31,7 @@ export function Sidebar() {
   const setActiveNav = useLibraryStore((s) => s.setActiveNav);
   const setLibraryTab = useLibraryStore((s) => s.setLibraryTab);
   const setSelectedPlaylistId = useLibraryStore((s) => s.setSelectedPlaylistId);
+  const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
 
   const handleSelect = (item: NavItem) => {
     setActiveNav(item.nav);
@@ -34,6 +39,7 @@ export function Sidebar() {
       setLibraryTab(item.tab);
     }
     setSelectedPlaylistId(null);
+    setSearchQuery("");
   };
 
   const isActiveItem = (item: NavItem) => {
@@ -44,55 +50,57 @@ export function Sidebar() {
 
   return (
     <aside
-      className="w-48 shrink-0 flex flex-col h-full px-3.5 py-2 select-none adaptive-transition"
+      className="w-[190px] shrink-0 hidden md:flex flex-col h-full p-4 overflow-y-auto select-none adaptive-transition"
       style={{ backgroundColor: "var(--surface-0)" }}
     >
-      <div
-        className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider"
-        style={{ color: "var(--text-muted)" }}
-      >
-        YOUR MUSIC
-      </div>
+      <div className="flex flex-col gap-2 flex-1">
+        <div
+          className="p-3 text-[11px] leading-[16px] font-medium uppercase tracking-[0.5px]"
+          style={{ color: "var(--text-primary)" }}
+        >
+          YOUR MUSIC
+        </div>
 
-      <nav className="mt-1 space-y-1.5 flex-1 overflow-y-auto">
-        {NAV_ITEMS.map((item) => {
-          const active = isActiveItem(item);
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => handleSelect(item)}
-              className="w-full flex items-center gap-3 px-3.5 py-3 rounded-full text-[13px] font-medium transition-colors cursor-pointer"
-              style={{
-                backgroundColor: active ? "var(--accent-container)" : "transparent",
-                color: active ? "var(--on-accent-container)" : "var(--text-primary)",
-              }}
-            >
-              <Icon
-                name={item.icon}
-                size={19}
-                style={{ color: "var(--accent)" }}
-              />
-              <span className="truncate">{item.label}</span>
-            </button>
-          );
-        })}
+        <nav className="flex flex-col gap-2">
+          {SIDEBAR_NAV_ITEMS.map((item) => {
+            const active = isActiveItem(item);
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleSelect(item)}
+                className="w-full flex items-center gap-3 p-[14px] rounded-[18px] text-[14px] leading-[20px] font-medium transition-colors cursor-pointer hover:bg-[var(--surface-variant)]"
+                style={{
+                  backgroundColor: active ? "var(--accent-container)" : "transparent",
+                  color: active ? "var(--on-accent-container)" : "var(--text-primary)",
+                }}
+              >
+                <Icon
+                  name={item.icon}
+                  size={24}
+                  style={{ color: "var(--accent)" }}
+                />
+                <span className="truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
         {scanProgress.scanning && (
           <div
-            className="mt-4 mx-1 p-2.5 rounded-2xl text-xs"
+            className="mt-2 p-3 rounded-[16px] text-xs"
             style={{
               backgroundColor: "var(--surface-1)",
               border: "1px solid var(--outline)",
             }}
           >
-            <div className="font-medium">Scanning…</div>
-            <div className="mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
+            <div className="font-medium">Reading tracks…</div>
+            <div className="mt-0.5 truncate" style={{ color: "var(--text-secondary)" }}>
               {scanProgress.scanned} / {scanProgress.total || "?"}
             </div>
           </div>
         )}
-      </nav>
+      </div>
     </aside>
   );
 }
