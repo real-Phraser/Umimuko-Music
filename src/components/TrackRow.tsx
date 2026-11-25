@@ -13,7 +13,7 @@ interface TrackRowProps {
   showAlbum?: boolean;
 }
 
-export function TrackRow({ track, index, queueIds, showAlbum = true }: TrackRowProps) {
+export function TrackRow({ track, queueIds, showAlbum = true }: TrackRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const currentTrackId = usePlayerStore((s) => s.playback.currentTrackId);
@@ -43,100 +43,67 @@ export function TrackRow({ track, index, queueIds, showAlbum = true }: TrackRowP
 
   return (
     <div
-      onDoubleClick={handlePlay}
-      className="group relative flex items-center gap-3 px-3 py-2 rounded-2xl transition-colors"
+      onClick={handlePlay}
+      className="group relative flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl transition-colors cursor-pointer"
       style={{
-        backgroundColor: isActive ? "var(--accent-container)" : "transparent",
+        backgroundColor: isActive ? "var(--accent-container)" : "var(--surface-1)",
       }}
     >
-      {/* Index / Play toggle */}
-      <button
-        type="button"
-        onClick={handlePlay}
-        className="w-7 h-7 shrink-0 flex items-center justify-center rounded-full text-xs font-medium cursor-pointer"
-        style={{ color: isActive ? "var(--accent)" : "var(--text-muted)" }}
-        title={isPlaying ? "Pause" : "Play"}
-      >
-        <span className="group-hover:hidden">
-          {isPlaying ? <Icon name="levels" size={16} /> : index + 1}
-        </span>
-        <span className="hidden group-hover:inline-flex">
-          <Icon name={isPlaying ? "pause" : "play"} size={18} />
-        </span>
-      </button>
+      {/* Artwork */}
+      <Artwork
+        artworkPath={track.artworkPath}
+        accentColor={track.accentColor}
+        alt={track.title}
+        size="sm"
+        rounded="rounded-lg"
+      />
 
-      {/* Artwork & Title */}
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <Artwork
-          artworkPath={track.artworkPath}
-          accentColor={track.accentColor}
-          alt={track.title}
-          size="xs"
-          rounded="rounded-lg"
-        />
-        <div className="min-w-0 flex-1">
-          <div
-            className="text-sm font-medium truncate"
-            style={{ color: isActive ? "var(--accent)" : "var(--text-primary)" }}
-          >
-            {track.title}
-          </div>
-          <div className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
-            {track.artist}
-          </div>
-        </div>
-      </div>
-
-      {/* Album */}
-      {showAlbum && (
+      {/* Title, Artist • Album, Duration (matching v0.26.1 TrackRow) */}
+      <div className="min-w-0 flex-1">
         <div
-          className="hidden md:block w-44 text-xs truncate"
+          className="text-sm font-semibold truncate flex items-center gap-2"
+          style={{ color: isActive ? "var(--accent)" : "var(--text-primary)" }}
+        >
+          <span className="truncate">{track.title}</span>
+          {isPlaying && <Icon name="levels" size={14} style={{ color: "var(--accent)" }} />}
+        </div>
+        <div
+          className="text-xs truncate mt-0.5"
           style={{ color: "var(--text-secondary)" }}
         >
-          {track.album}
+          {track.artist}
+          {showAlbum && track.album ? `  •  ${track.album}` : ""}
         </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => void toggleLike(track.id)}
-          className="p-1.5 rounded-full transition-opacity cursor-pointer"
-          style={{
-            color: track.liked ? "var(--accent)" : "var(--text-muted)",
-            opacity: track.liked ? 1 : undefined,
-          }}
-          title={track.liked ? "Unlike" : "Like"}
-        >
-          <Icon name={track.liked ? "liked" : "heart"} size={17} />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => void togglePin(track.id)}
-          className="hidden sm:inline-flex p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-          style={{
-            color: isPinned ? "var(--accent)" : "var(--text-muted)",
-            opacity: isPinned ? 1 : undefined,
-          }}
-          title={isPinned ? "Unpin from Home" : "Pin to Home"}
-        >
-          <Icon name={isPinned ? "unpin" : "pin"} size={16} />
-        </button>
-
         <div
-          className="w-12 text-right text-xs tabular-nums"
+          className="text-[11px] tabular-nums mt-0.5"
           style={{ color: "var(--text-muted)" }}
         >
           {formatDuration(track.durationMs)}
         </div>
+      </div>
+
+      {/* Right actions: Heart + More menu */}
+      <div
+        className="flex items-center gap-1 shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={() => void toggleLike(track.id)}
+          className="p-2 rounded-full transition-opacity hover:opacity-80 cursor-pointer"
+          style={{
+            color: track.liked ? "var(--accent)" : "var(--text-muted)",
+          }}
+          title={track.liked ? "Unlike" : "Like"}
+        >
+          <Icon name={track.liked ? "liked" : "heart"} size={18} />
+        </button>
 
         <div className="relative">
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className="p-1.5 rounded-full opacity-60 group-hover:opacity-100 cursor-pointer"
+            className="p-2 rounded-full hover:opacity-80 cursor-pointer"
             style={{ color: "var(--text-secondary)" }}
             title="Track options"
           >
@@ -150,7 +117,7 @@ export function TrackRow({ track, index, queueIds, showAlbum = true }: TrackRowP
                 onClick={() => setMenuOpen(false)}
               />
               <div
-                className="absolute right-0 top-8 z-40 w-48 py-1.5 rounded-2xl shadow-xl text-xs"
+                className="absolute right-0 top-9 z-40 w-48 py-1.5 rounded-2xl shadow-xl text-xs"
                 style={{
                   backgroundColor: "var(--surface-3)",
                   border: "1px solid var(--outline)",
@@ -165,7 +132,7 @@ export function TrackRow({ track, index, queueIds, showAlbum = true }: TrackRowP
                   className="w-full px-3.5 py-2 text-left flex items-center gap-2.5 hover:opacity-80 cursor-pointer"
                 >
                   <Icon name="queue" size={15} />
-                  <span>Play Next</span>
+                  <span>Play next</span>
                 </button>
                 <button
                   type="button"
@@ -176,7 +143,18 @@ export function TrackRow({ track, index, queueIds, showAlbum = true }: TrackRowP
                   className="w-full px-3.5 py-2 text-left flex items-center gap-2.5 hover:opacity-80 cursor-pointer"
                 >
                   <Icon name="playlist_add" size={15} />
-                  <span>Add to Queue</span>
+                  <span>Add to queue</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void togglePin(track.id);
+                    setMenuOpen(false);
+                  }}
+                  className="w-full px-3.5 py-2 text-left flex items-center gap-2.5 hover:opacity-80 cursor-pointer"
+                >
+                  <Icon name={isPinned ? "unpin" : "pin"} size={15} />
+                  <span>{isPinned ? "Unpin from Home" : "Pin to Home"}</span>
                 </button>
                 <button
                   type="button"
@@ -187,7 +165,7 @@ export function TrackRow({ track, index, queueIds, showAlbum = true }: TrackRowP
                   className="w-full px-3.5 py-2 text-left flex items-center gap-2.5 hover:opacity-80 cursor-pointer"
                 >
                   <Icon name="info" size={15} />
-                  <span>Edit Tags</span>
+                  <span>Edit tags</span>
                 </button>
                 {playlists.length > 0 && (
                   <div
@@ -198,7 +176,7 @@ export function TrackRow({ track, index, queueIds, showAlbum = true }: TrackRowP
                       className="px-3.5 py-1 text-[10px] uppercase tracking-wider"
                       style={{ color: "var(--text-muted)" }}
                     >
-                      Add to Playlist
+                      Add to playlist
                     </div>
                     {playlists.map((pl) => (
                       <button

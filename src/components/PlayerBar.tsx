@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { api } from "../api/tauri";
 import { useLibraryStore } from "../store/useLibraryStore";
 import { usePlayerStore } from "../store/usePlayerStore";
@@ -20,27 +21,31 @@ export function PlayerBar() {
   const cycleRepeat = usePlayerStore((s) => s.cycleRepeat);
   const setQueueDrawerOpen = usePlayerStore((s) => s.setQueueDrawerOpen);
   const setFullPlayerOpen = usePlayerStore((s) => s.setFullPlayerOpen);
-  const setFullPlayerTab = usePlayerStore((s) => s.setFullPlayerTab);
 
+  const playlists = useLibraryStore((s) => s.playlists);
+  const addTrackToPlaylist = useLibraryStore((s) => s.addTrackToPlaylist);
   const toggleLike = useLibraryStore((s) => s.toggleLike);
-  const openDialog = useLibraryStore((s) => s.openDialog);
+
+  const [playlistMenuOpen, setPlaylistMenuOpen] = useState(false);
 
   const track = playback.currentTrack;
   const isPlaying = playback.status === "playing";
   const duration = playback.durationMs || track?.durationMs || 0;
   const progressPct =
     duration > 0 ? Math.min(100, (playback.positionMs / duration) * 100) : 0;
+  const effectiveVolume = playback.muted ? 0 : playback.volume;
+  const volumePct = Math.round(effectiveVolume * 100);
 
   return (
     <footer
-      className="h-22 shrink-0 px-4 border-t flex items-center justify-between gap-4 backdrop-blur-xl adaptive-transition"
+      className="h-[82px] shrink-0 px-5 flex items-center justify-between gap-4 adaptive-transition"
       style={{
-        backgroundColor: "var(--player-glass)",
-        borderColor: "var(--outline)",
+        backgroundColor: "var(--surface-1)",
+        borderTop: "1px solid var(--outline)",
       }}
     >
-      {/* Left: Track Info */}
-      <div className="flex items-center gap-3 min-w-0 w-72">
+      {/* Left: 44x44 Artwork + Title + Artist • Album */}
+      <div className="flex items-center gap-3 min-w-0 w-[28%]">
         <button
           type="button"
           onClick={() => track && setFullPlayerOpen(true)}
@@ -51,46 +56,34 @@ export function PlayerBar() {
             artworkPath={track?.artworkPath}
             accentColor={track?.accentColor}
             alt={track?.title ?? "No track"}
-            size="md"
-            rounded="rounded-xl"
+            size="sm"
+            rounded="rounded-lg"
           />
           <div className="min-w-0">
-            <div className="text-sm font-medium truncate">
-              {track?.title ?? "Nothing playing"}
+            <div className="text-sm font-semibold truncate">
+              {track?.title ?? "Pick something to play"}
             </div>
             <div
-              className="text-xs truncate"
+              className="text-xs truncate mt-0.5"
               style={{ color: "var(--text-secondary)" }}
             >
-              {track ? `${track.artist} • ${track.album}` : "Select a song to start"}
+              {track ? `${track.artist}  •  ${track.album}` : "Your music, your space"}
             </div>
           </div>
         </button>
-
-        {track && (
-          <button
-            type="button"
-            onClick={() => void toggleLike(track.id)}
-            className="p-1.5 rounded-full shrink-0 cursor-pointer"
-            style={{ color: track.liked ? "var(--accent)" : "var(--text-muted)" }}
-            title={track.liked ? "Unlike" : "Like"}
-          >
-            <Icon name={track.liked ? "liked" : "heart"} size={18} />
-          </button>
-        )}
       </div>
 
-      {/* Center: Transport + Seek Bar */}
-      <div className="flex-1 max-w-xl flex flex-col items-center gap-1.5">
+      {/* Center: Shuffle, Prev, circular accent Play/Pause, Next, Repeat over Seek Bar */}
+      <div className="flex-1 max-w-[520px] flex flex-col items-center gap-1.5">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => void toggleShuffle()}
             className="p-1.5 rounded-full transition-colors cursor-pointer"
             style={{
-              color: playback.shuffle ? "var(--accent)" : "var(--text-secondary)",
+              color: playback.shuffle ? "var(--accent)" : "var(--text-primary)",
             }}
-            title="Shuffle"
+            title={playback.shuffle ? "Shuffle on" : "Shuffle off"}
           >
             <Icon name="shuffle" size={18} />
           </button>
@@ -102,13 +95,13 @@ export function PlayerBar() {
             style={{ color: "var(--text-primary)" }}
             title="Previous"
           >
-            <Icon name="previous" size={22} />
+            <Icon name="previous" size={20} />
           </button>
 
           <button
             type="button"
             onClick={() => void togglePlayPause()}
-            className="w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-transform active:scale-95 cursor-pointer"
+            className="w-10 h-10 rounded-full flex items-center justify-center shadow-md transition-transform hover:scale-105 active:scale-95 cursor-pointer"
             style={{
               backgroundColor: "var(--accent)",
               color: "var(--on-accent)",
@@ -125,7 +118,7 @@ export function PlayerBar() {
             style={{ color: "var(--text-primary)" }}
             title="Next"
           >
-            <Icon name="next" size={22} />
+            <Icon name="next" size={20} />
           </button>
 
           <button
@@ -134,7 +127,7 @@ export function PlayerBar() {
             className="p-1.5 rounded-full transition-colors cursor-pointer"
             style={{
               color:
-                playback.repeat !== "off" ? "var(--accent)" : "var(--text-secondary)",
+                playback.repeat !== "off" ? "var(--accent)" : "var(--text-primary)",
             }}
             title={`Repeat: ${playback.repeat}`}
           >
@@ -147,8 +140,8 @@ export function PlayerBar() {
 
         <div className="w-full flex items-center gap-2.5">
           <span
-            className="text-[11px] tabular-nums w-10 text-right"
-            style={{ color: "var(--text-muted)" }}
+            className="text-[11px] tabular-nums w-9 text-right"
+            style={{ color: "var(--text-secondary)" }}
           >
             {formatDuration(playback.positionMs)}
           </span>
@@ -162,91 +155,101 @@ export function PlayerBar() {
               className="umimuko-slider w-full"
               style={{
                 background: `linear-gradient(90deg, var(--accent) ${progressPct}%, var(--surface-4) ${progressPct}%)`,
-                height: 4,
+                height: 3,
                 borderRadius: 999,
               }}
             />
           </div>
           <span
-            className="text-[11px] tabular-nums w-10"
-            style={{ color: "var(--text-muted)" }}
+            className="text-[11px] tabular-nums w-9"
+            style={{ color: "var(--text-secondary)" }}
           >
             {formatDuration(duration)}
           </span>
         </div>
       </div>
 
-      {/* Right: Volume & Utility Controls */}
-      <div className="flex items-center justify-end gap-1.5 w-72">
+      {/* Right: Heart, Add-to-playlist, Queue, Mini-player, Fullscreen, Volume icon + slider + % */}
+      <div className="flex items-center justify-end gap-1.5 w-[30%]">
         <button
           type="button"
-          onClick={() => void toggleMute()}
-          className="p-1.5 rounded-full cursor-pointer"
-          style={{ color: "var(--text-secondary)" }}
-          title={playback.muted ? "Unmute" : "Mute"}
-        >
-          <Icon name={playback.muted || playback.volume === 0 ? "muted" : "volume"} size={18} />
-        </button>
-
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={playback.muted ? 0 : playback.volume}
-          onChange={(e) => void setVolume(Number(e.target.value))}
-          className="umimuko-slider w-20 mr-1"
-          aria-label="Volume"
-        />
-
-        <button
-          type="button"
-          onClick={() => openDialog("sleepTimer")}
-          className="relative p-1.5 rounded-full cursor-pointer"
+          disabled={!track}
+          onClick={() => track && void toggleLike(track.id)}
+          className="p-1.5 rounded-full cursor-pointer disabled:opacity-40"
           style={{
-            color:
-              playback.sleepTimerRemainingMs !== null
-                ? "var(--accent)"
-                : "var(--text-secondary)",
+            color: track?.liked ? "var(--accent)" : "var(--text-primary)",
           }}
-          title="Sleep Timer"
+          title={track?.liked ? "Unlike current track" : "Like current track"}
         >
-          <Icon name="timer" size={18} />
+          <Icon name={track?.liked ? "liked" : "heart"} size={18} />
         </button>
 
-        <button
-          type="button"
-          onClick={() => openDialog("equalizer")}
-          className="p-1.5 rounded-full cursor-pointer"
-          style={{ color: "var(--text-secondary)" }}
-          title="Equalizer"
-        >
-          <Icon name="levels" size={18} />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            disabled={!track}
+            onClick={() => setPlaylistMenuOpen((v) => !v)}
+            className="p-1.5 rounded-full cursor-pointer disabled:opacity-40"
+            style={{ color: "var(--text-primary)" }}
+            title="Add current track to playlist"
+          >
+            <Icon name="playlist_add" size={18} />
+          </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            setFullPlayerTab("lyrics");
-            setFullPlayerOpen(!fullPlayerOpen);
-          }}
-          className="p-1.5 rounded-full cursor-pointer"
-          style={{
-            color: fullPlayerOpen ? "var(--accent)" : "var(--text-secondary)",
-          }}
-          title="Lyrics & Full Player"
-        >
-          <Icon name="lyrics" size={18} />
-        </button>
+          {playlistMenuOpen && track && (
+            <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setPlaylistMenuOpen(false)}
+              />
+              <div
+                className="absolute right-0 bottom-10 z-40 w-48 py-1.5 rounded-2xl shadow-xl text-xs"
+                style={{
+                  backgroundColor: "var(--surface-3)",
+                  border: "1px solid var(--outline)",
+                }}
+              >
+                <div
+                  className="px-3.5 py-1 text-[10px] uppercase tracking-wider"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Add to playlist
+                </div>
+                {playlists.length === 0 ? (
+                  <div
+                    className="px-3.5 py-2"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
+                    No playlists yet
+                  </div>
+                ) : (
+                  playlists.map((pl) => (
+                    <button
+                      key={pl.id}
+                      type="button"
+                      onClick={() => {
+                        void addTrackToPlaylist(pl.id, track.id);
+                        setPlaylistMenuOpen(false);
+                      }}
+                      className="w-full px-3.5 py-1.5 text-left truncate hover:opacity-80 cursor-pointer"
+                    >
+                      {pl.name}
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
 
         <button
           type="button"
           onClick={() => setQueueDrawerOpen(!queueDrawerOpen)}
           className="p-1.5 rounded-full cursor-pointer"
           style={{
-            color: queueDrawerOpen ? "var(--accent)" : "var(--text-secondary)",
+            color: queueDrawerOpen ? "var(--accent)" : "var(--text-primary)",
           }}
-          title="Queue"
+          title="Open playback queue"
         >
           <Icon name="queue" size={18} />
         </button>
@@ -255,21 +258,60 @@ export function PlayerBar() {
           type="button"
           onClick={() => void api.toggleMiniPlayer(true)}
           className="p-1.5 rounded-full cursor-pointer"
-          style={{ color: "var(--text-secondary)" }}
-          title="Open Mini Player"
+          style={{ color: "var(--text-primary)" }}
+          title="Collapse to floating player"
         >
           <Icon name="bubble" size={18} />
         </button>
 
         <button
           type="button"
+          disabled={!track}
           onClick={() => setFullPlayerOpen(!fullPlayerOpen)}
-          className="p-1.5 rounded-full cursor-pointer"
-          style={{ color: "var(--text-secondary)" }}
-          title="Expand Player"
+          className="p-1.5 rounded-full cursor-pointer disabled:opacity-40"
+          style={{
+            color: fullPlayerOpen ? "var(--accent)" : "var(--text-primary)",
+          }}
+          title="Open full-screen player"
         >
           <Icon name="expand" size={18} />
         </button>
+
+        <button
+          type="button"
+          onClick={() => void toggleMute()}
+          className="p-1.5 ml-1 rounded-full cursor-pointer"
+          style={{ color: "var(--text-secondary)" }}
+          title={playback.muted ? "Unmute" : "Mute"}
+        >
+          <Icon
+            name={playback.muted || playback.volume === 0 ? "muted" : "volume"}
+            size={18}
+          />
+        </button>
+
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={effectiveVolume}
+          onChange={(e) => void setVolume(Number(e.target.value))}
+          className="umimuko-slider w-20"
+          style={{
+            background: `linear-gradient(90deg, var(--accent) ${volumePct}%, var(--surface-4) ${volumePct}%)`,
+            height: 3,
+            borderRadius: 999,
+          }}
+          aria-label="Volume"
+        />
+
+        <span
+          className="text-[11px] tabular-nums w-8 text-right"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          {volumePct}%
+        </span>
       </div>
     </footer>
   );

@@ -1,211 +1,98 @@
-import appIconUrl from "../assets/branding/app-icon.png";
 import { useLibraryStore, type LibraryTab, type NavSection } from "../store/useLibraryStore";
 import { Icon, type IconName } from "./Icon";
 
-const PRIMARY_NAV: Array<{ id: NavSection; label: string; icon: IconName }> = [
-  { id: "home", label: "Home", icon: "home" },
-  { id: "search", label: "Search", icon: "search" },
-  { id: "liked", label: "Liked Songs", icon: "liked" },
-];
+interface NavItem {
+  id: string;
+  label: string;
+  icon: IconName;
+  nav: NavSection;
+  tab?: LibraryTab;
+}
 
-const LIBRARY_TABS: Array<{ id: LibraryTab; label: string; icon: IconName }> = [
-  { id: "songs", label: "Songs", icon: "music" },
-  { id: "albums", label: "Albums", icon: "album" },
-  { id: "artists", label: "Artists", icon: "artist" },
-  { id: "playlists", label: "Playlists", icon: "playlist" },
-  { id: "folders", label: "Folders", icon: "folder" },
+const NAV_ITEMS: NavItem[] = [
+  { id: "home", label: "Home", icon: "home", nav: "home" },
+  { id: "songs", label: "Tracks", icon: "library", nav: "library", tab: "songs" },
+  { id: "albums", label: "Albums", icon: "album", nav: "library", tab: "albums" },
+  { id: "artists", label: "Artists", icon: "artist", nav: "library", tab: "artists" },
+  { id: "playlists", label: "Playlists", icon: "playlist", nav: "library", tab: "playlists" },
+  { id: "liked", label: "Liked songs", icon: "liked", nav: "liked" },
+  { id: "folders", label: "Folders", icon: "folder", nav: "library", tab: "folders" },
 ];
 
 export function Sidebar() {
   const activeNav = useLibraryStore((s) => s.activeNav);
   const libraryTab = useLibraryStore((s) => s.libraryTab);
   const scanProgress = useLibraryStore((s) => s.scanProgress);
-  const tracksCount = useLibraryStore((s) => s.tracks.length);
-  const likedCount = useLibraryStore((s) => s.tracks.filter((t) => t.liked).length);
 
   const setActiveNav = useLibraryStore((s) => s.setActiveNav);
   const setLibraryTab = useLibraryStore((s) => s.setLibraryTab);
   const setSelectedPlaylistId = useLibraryStore((s) => s.setSelectedPlaylistId);
-  const openDialog = useLibraryStore((s) => s.openDialog);
-  const scanFolders = useLibraryStore((s) => s.scanFolders);
 
-  const handleLibraryTabClick = (tab: LibraryTab) => {
-    setActiveNav("library");
-    setLibraryTab(tab);
+  const handleSelect = (item: NavItem) => {
+    setActiveNav(item.nav);
+    if (item.tab) {
+      setLibraryTab(item.tab);
+    }
     setSelectedPlaylistId(null);
+  };
+
+  const isActiveItem = (item: NavItem) => {
+    if (item.nav === "home") return activeNav === "home";
+    if (item.nav === "liked") return activeNav === "liked";
+    return activeNav === "library" && libraryTab === item.tab;
   };
 
   return (
     <aside
-      className="w-60 shrink-0 flex flex-col h-full border-r adaptive-transition"
-      style={{
-        backgroundColor: "var(--surface-1)",
-        borderColor: "var(--outline)",
-      }}
+      className="w-48 shrink-0 flex flex-col h-full px-3.5 py-2 select-none adaptive-transition"
+      style={{ backgroundColor: "var(--surface-0)" }}
     >
-      {/* App Brand */}
-      <div className="px-4 pt-5 pb-4 flex items-center gap-3">
-        <img
-          src={appIconUrl}
-          alt="Umimuko Music"
-          className="w-9 h-9 rounded-xl shadow-sm object-cover"
-          draggable={false}
-        />
-        <div className="min-w-0">
-          <div className="text-sm font-semibold tracking-tight truncate">
-            Umimuko Music
-          </div>
-          <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            v0.26.1 • {tracksCount} tracks
-          </div>
-        </div>
+      <div
+        className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--text-muted)" }}
+      >
+        YOUR MUSIC
       </div>
 
-      {/* Primary Nav */}
-      <nav className="px-2.5 space-y-1">
-        {PRIMARY_NAV.map((item) => {
-          const active = activeNav === item.id;
+      <nav className="mt-1 space-y-1.5 flex-1 overflow-y-auto">
+        {NAV_ITEMS.map((item) => {
+          const active = isActiveItem(item);
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => setActiveNav(item.id)}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-full text-sm font-medium transition-colors cursor-pointer"
+              onClick={() => handleSelect(item)}
+              className="w-full flex items-center gap-3 px-3.5 py-3 rounded-full text-[13px] font-medium transition-colors cursor-pointer"
               style={{
                 backgroundColor: active ? "var(--accent-container)" : "transparent",
-                color: active ? "var(--on-accent-container)" : "var(--text-secondary)",
+                color: active ? "var(--on-accent-container)" : "var(--text-primary)",
               }}
             >
-              <span className="flex items-center gap-3">
-                <Icon
-                  name={item.icon}
-                  size={19}
-                  style={{ color: active ? "var(--accent)" : undefined }}
-                />
-                <span>{item.label}</span>
-              </span>
-              {item.id === "liked" && likedCount > 0 && (
-                <span
-                  className="text-[11px] px-2 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: "var(--surface-3)",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  {likedCount}
-                </span>
-              )}
+              <Icon
+                name={item.icon}
+                size={19}
+                style={{ color: "var(--accent)" }}
+              />
+              <span className="truncate">{item.label}</span>
             </button>
           );
         })}
-      </nav>
-
-      {/* Library Section */}
-      <div className="mt-5 px-2.5 flex-1 overflow-y-auto">
-        <div
-          className="px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider flex items-center justify-between"
-          style={{ color: "var(--text-muted)" }}
-        >
-          <span>Library</span>
-          <button
-            type="button"
-            onClick={() => void scanFolders()}
-            disabled={scanProgress.scanning}
-            title="Rescan music folders"
-            className="p-1 rounded-full hover:opacity-80 disabled:opacity-40 cursor-pointer"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            <Icon
-              name="restore"
-              size={14}
-              className={scanProgress.scanning ? "animate-spin" : ""}
-            />
-          </button>
-        </div>
-
-        <div className="space-y-1">
-          {LIBRARY_TABS.map((tab) => {
-            const active = activeNav === "library" && libraryTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => handleLibraryTabClick(tab.id)}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer"
-                style={{
-                  backgroundColor: active ? "var(--accent-container)" : "transparent",
-                  color: active ? "var(--on-accent-container)" : "var(--text-secondary)",
-                }}
-              >
-                <Icon
-                  name={tab.icon}
-                  size={18}
-                  style={{ color: active ? "var(--accent)" : undefined }}
-                />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
 
         {scanProgress.scanning && (
           <div
-            className="mt-3 mx-2 p-2.5 rounded-xl text-xs"
+            className="mt-4 mx-1 p-2.5 rounded-2xl text-xs"
             style={{
-              backgroundColor: "var(--surface-2)",
+              backgroundColor: "var(--surface-1)",
               border: "1px solid var(--outline)",
             }}
           >
-            <div className="font-medium">Scanning library…</div>
+            <div className="font-medium">Scanning…</div>
             <div className="mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
               {scanProgress.scanned} / {scanProgress.total || "?"}
             </div>
           </div>
         )}
-      </div>
-
-      {/* Tools & Settings */}
-      <div
-        className="p-2.5 border-t space-y-1"
-        style={{ borderColor: "var(--outline)" }}
-      >
-        <button
-          type="button"
-          onClick={() => openDialog("stats")}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors hover:opacity-90 cursor-pointer"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          <Icon name="info" size={18} />
-          <span>Listening Stats</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => openDialog("duplicates")}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors hover:opacity-90 cursor-pointer"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          <Icon name="library" size={18} />
-          <span>Duplicates</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => openDialog("equalizer")}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors hover:opacity-90 cursor-pointer"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          <Icon name="levels" size={18} />
-          <span>Equalizer</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => openDialog("settings")}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors hover:opacity-90 cursor-pointer"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          <Icon name="settings" size={18} />
-          <span>Settings</span>
-        </button>
-      </div>
+      </nav>
     </aside>
   );
 }

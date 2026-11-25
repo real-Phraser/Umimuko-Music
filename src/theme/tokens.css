@@ -32,60 +32,63 @@
 
 :root {
   --font-sans: "Rubik", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --accent: #7c6af6;
-  --accent-rgb: 124, 106, 246;
-  --on-accent: #ffffff;
-  --accent-container: rgba(124, 106, 246, 0.18);
-  --on-accent-container: #e3ddff;
+  --accent: #f29b8c;
+  --accent-rgb: 242, 155, 140;
+  --on-accent: #1a1210;
+  --accent-container: #3a2b28;
+  --on-accent-container: #ffdad4;
 
-  /* Default Dark Material 3 Surface Tokens */
-  --surface-0: #0d0e12;
-  --surface-1: #13151b;
-  --surface-2: #191c24;
-  --surface-3: #20242f;
-  --surface-4: #272c39;
-  --surface-variant: rgba(255, 255, 255, 0.06);
-  --outline: rgba(255, 255, 255, 0.1);
-  --outline-strong: rgba(255, 255, 255, 0.18);
+  /* Umimuko Music v0.26.1 Warm Dark Material 3 Surfaces */
+  --surface-0: #141211;
+  --surface-1: #1d1918;
+  --surface-2: #26211f;
+  --surface-3: #302a27;
+  --surface-4: #3d3531;
+  --surface-variant: rgba(245, 239, 234, 0.06);
+  --outline: rgba(245, 239, 234, 0.08);
+  --outline-strong: rgba(245, 239, 234, 0.16);
 
-  --text-primary: #f2f3f7;
-  --text-secondary: #a6adbe;
-  --text-muted: #70778a;
+  --text-primary: #f5efea;
+  --text-secondary: #c6bcb5;
+  --text-muted: #8f857f;
 
   --danger: #f87171;
   --danger-container: rgba(248, 113, 113, 0.16);
   --success: #4ade80;
   --warning: #fbbf24;
 
-  --player-glass: rgba(19, 21, 27, 0.86);
-  --shadow-elevated: 0 18px 42px rgba(0, 0, 0, 0.45);
+  --player-glass: #1d1918;
+  --shadow-elevated: 0 18px 42px rgba(0, 0, 0, 0.52);
 }
 
 :root[data-theme="light"] {
+  --accent: #2166c2;
+  --accent-rgb: 33, 102, 194;
   --on-accent: #ffffff;
-  --accent-container: rgba(var(--accent-rgb), 0.15);
-  --on-accent-container: #1f1b38;
+  --accent-container: #e3dedb;
+  --on-accent-container: #1c1917;
 
-  --surface-0: #f4f5f9;
-  --surface-1: #ffffff;
-  --surface-2: #eef0f6;
-  --surface-3: #e4e7f0;
-  --surface-4: #d8dce8;
-  --surface-variant: rgba(15, 23, 42, 0.05);
-  --outline: rgba(15, 23, 42, 0.1);
-  --outline-strong: rgba(15, 23, 42, 0.18);
+  /* Umimuko Music v0.26.1 Warm Light Material 3 Surfaces */
+  --surface-0: #fbf9f7;
+  --surface-1: #f3f0ee;
+  --surface-2: #eae5e2;
+  --surface-3: #e0dad6;
+  --surface-4: #d4cdc8;
+  --surface-variant: rgba(28, 25, 23, 0.05);
+  --outline: rgba(28, 25, 23, 0.08);
+  --outline-strong: rgba(28, 25, 23, 0.16);
 
-  --text-primary: #141722;
-  --text-secondary: #4e5669;
-  --text-muted: #7b8499;
+  --text-primary: #1c1917;
+  --text-secondary: #57504c;
+  --text-muted: #857c77;
 
   --danger: #dc2626;
   --danger-container: rgba(220, 38, 38, 0.12);
   --success: #16a34a;
   --warning: #d97706;
 
-  --player-glass: rgba(255, 255, 255, 0.88);
-  --shadow-elevated: 0 18px 40px rgba(15, 23, 42, 0.14);
+  --player-glass: #f3f0ee;
+  --shadow-elevated: 0 18px 40px rgba(28, 25, 23, 0.12);
 }
 
 html,
@@ -99,7 +102,7 @@ body,
   user-select: none;
 }
 
-/* Smooth album-adaptive accent transitions */
+/* Smooth album-adaptive accent & tonal surface transitions */
 body,
 .adaptive-transition {
   transition:
@@ -108,10 +111,10 @@ body,
     color 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* Custom subtle scrollbars */
+/* Subtle scrollbar matching Material 3 desktop */
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -127,6 +130,15 @@ body,
   background: var(--text-muted);
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Range sliders */
 input[type="range"].umimuko-slider {
   -webkit-appearance: none;
@@ -138,15 +150,15 @@ input[type="range"].umimuko-slider {
 input[type="range"].umimuko-slider::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: var(--surface-4);
+  background: transparent;
 }
 
 input[type="range"].umimuko-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: -5px;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
   border-radius: 999px;
   background: var(--accent);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
@@ -154,5 +166,5 @@ input[type="range"].umimuko-slider::-webkit-slider-thumb {
 }
 
 input[type="range"].umimuko-slider:hover::-webkit-slider-thumb {
-  transform: scale(1.18);
+  transform: scale(1.2);
 }

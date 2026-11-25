@@ -1,7 +1,9 @@
 import { useEffect, useMemo } from "react";
+import appIconUrl from "./assets/branding/app-icon.png";
 import { getWindowLabel } from "./api/tauri";
 import { FullPlayer } from "./components/FullPlayer";
 import { HomeScreen } from "./components/HomeScreen";
+import { Icon } from "./components/Icon";
 import { LibraryView } from "./components/LibraryView";
 import { PlayerBar } from "./components/PlayerBar";
 import { QueueDrawer } from "./components/QueueDrawer";
@@ -24,6 +26,7 @@ function MainWindow() {
   const initSettings = useSettingsStore((s) => s.init);
   const activeNav = useLibraryStore((s) => s.activeNav);
   const setActiveNav = useLibraryStore((s) => s.setActiveNav);
+  const openDialog = useLibraryStore((s) => s.openDialog);
 
   const keybindings = useSettingsStore((s) => s.settings.keybindings);
   const togglePlayPause = usePlayerStore((s) => s.togglePlayPause);
@@ -116,16 +119,58 @@ function MainWindow() {
 
   return (
     <ThemeProvider>
-      <div className="h-screen w-screen flex flex-col overflow-hidden">
+      <div
+        className="h-screen w-screen flex flex-col overflow-hidden adaptive-transition"
+        style={{ backgroundColor: "var(--surface-0)", color: "var(--text-primary)" }}
+      >
+        {/* Top Header Bar across full width (v0.26.1 Main.kt) */}
+        <header className="h-14 shrink-0 px-6 flex items-center justify-between select-none">
+          <div className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="w-7 h-7 inline-block shrink-0"
+              style={{
+                backgroundColor: "var(--text-primary)",
+                maskImage: `url(${appIconUrl})`,
+                WebkitMaskImage: `url(${appIconUrl})`,
+                maskRepeat: "no-repeat",
+                WebkitMaskRepeat: "no-repeat",
+                maskPosition: "center",
+                WebkitMaskPosition: "center",
+                maskSize: "contain",
+                WebkitMaskSize: "contain",
+              }}
+            />
+            <span className="text-lg font-medium tracking-tight">
+              Umimuko Music
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => openDialog("settings")}
+            aria-label="Settings"
+            title="Settings"
+            className="w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:opacity-85 cursor-pointer"
+            style={{
+              backgroundColor: "var(--surface-2)",
+              color: "var(--text-primary)",
+            }}
+          >
+            <Icon name="settings" size={20} />
+          </button>
+        </header>
+
+        {/* Main Body: Left Sidebar + Content Area */}
         <div className="flex-1 min-h-0 flex">
           <Sidebar />
-          <main className="flex-1 min-w-0 overflow-y-auto">
+          <main className="flex-1 min-w-0 overflow-y-auto px-6 pb-6 pt-1">
             {activeNav === "home" ? <HomeScreen /> : <LibraryView />}
           </main>
-          <QueueDrawer />
         </div>
 
         <PlayerBar />
+        <QueueDrawer />
         <FullPlayer />
 
         {/* Dialogs */}
