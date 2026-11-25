@@ -1,3 +1,6 @@
+pub mod audio;
+pub mod os;
+
 #[tauri::command]
 fn ping() -> &'static str {
     "pong"
