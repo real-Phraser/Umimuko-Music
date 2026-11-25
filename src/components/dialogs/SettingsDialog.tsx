@@ -52,17 +52,19 @@ function M3Switch({
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      className="w-12 h-7 rounded-full p-1 transition-colors cursor-pointer shrink-0"
+      className="relative w-[52px] h-8 rounded-full border-2 transition-colors duration-150 cursor-pointer shrink-0"
       style={{
         backgroundColor: checked ? "var(--accent)" : "var(--surface-3)",
-        border: checked ? "none" : "1px solid var(--outline-strong)",
+        borderColor: checked ? "transparent" : "var(--outline-strong)",
       }}
     >
       <span
-        className="block w-5 h-5 rounded-full transition-transform"
+        className="absolute top-1/2 -translate-y-1/2 rounded-full transition-all duration-150"
         style={{
+          width: checked ? 24 : 16,
+          height: checked ? 24 : 16,
+          left: checked ? 22 : 6,
           backgroundColor: checked ? "var(--on-accent)" : "var(--text-secondary)",
-          transform: checked ? "translateX(20px)" : "translateX(0px)",
         }}
       />
     </button>
@@ -89,14 +91,14 @@ function SteppedSlider({
   const tickCount = Math.round(span / step) + 1;
 
   return (
-    <div className="relative flex items-center h-6">
+    <div className="relative flex items-center h-8 group">
       <div
         className="absolute inset-x-0 h-1 rounded-full pointer-events-none"
         style={{
           background: `linear-gradient(90deg, var(--accent) ${pct}%, var(--surface-3) ${pct}%)`,
         }}
       />
-      <div className="absolute inset-x-[6px] flex items-center justify-between pointer-events-none">
+      <div className="absolute inset-x-[3px] flex items-center justify-between pointer-events-none">
         {Array.from({ length: tickCount }, (_, i) => {
           const tickVal = min + i * step;
           const active = tickVal <= value + step * 0.01;
@@ -107,12 +109,20 @@ function SteppedSlider({
               style={{
                 backgroundColor: active
                   ? "color-mix(in srgb, var(--on-accent) 75%, transparent)"
-                  : "var(--outline-strong)",
+                  : "color-mix(in srgb, var(--text-secondary) 65%, transparent)",
               }}
             />
           );
         })}
       </div>
+      <div
+        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 rounded-full pointer-events-none transition-transform duration-100 group-hover:scale-110"
+        style={{
+          left: `${pct}%`,
+          backgroundColor: "var(--accent)",
+          boxShadow: "0 1px 4px rgba(0, 0, 0, 0.35)",
+        }}
+      />
       <input
         type="range"
         min={min}
@@ -121,8 +131,7 @@ function SteppedSlider({
         value={value}
         aria-label={ariaLabel}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="umimuko-slider w-full relative z-10"
-        style={{ background: "transparent", height: 4 }}
+        className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-20"
       />
     </div>
   );
