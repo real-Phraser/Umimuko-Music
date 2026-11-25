@@ -1,7 +1,8 @@
 package com.lostf1sh.pixelplayeross.desktop
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -14,10 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +89,7 @@ fun QueuePanel(audio:AudioController,onDismiss:()->Unit,onSaveQueue:((List<Deskt
     val listState=rememberLazyListState()
     var dragging by remember {mutableStateOf<Long?>(null)}
     var dragCenter by remember {mutableFloatStateOf(0f)}
+    var dragHeight by remember {mutableIntStateOf(0)}
     var dropTarget by remember {mutableStateOf<Long?>(null)}
     var headerMenu by remember {mutableStateOf(false)}
     // Right-click a row to start selecting; right-click or click more rows to add/remove them.
@@ -93,6 +97,11 @@ fun QueuePanel(audio:AudioController,onDismiss:()->Unit,onSaveQueue:((List<Deskt
     val selecting=selected.isNotEmpty()
     fun toggle(key:Long) {selected=if(key in selected) selected-key else selected+key}
     val latestKeys by rememberUpdatedState(queue.keys)
+    val latestSelecting by rememberUpdatedState(selecting)
+    val density=LocalDensity.current
+    val dragHandleMaxX=with(density) {40.dp.toPx()}
+    val autoScrollEdgePx=with(density) {40.dp.toPx()}
+    val autoScrollStepPx=with(density) {10.dp.toPx()}
     fun updateTarget() {
         dropTarget=listState.layoutInfo.visibleItemsInfo.filter {it.key is Long}.minByOrNull {
             kotlin.math.abs((it.offset+it.size/2f)-dragCenter)
@@ -103,12 +112,18 @@ fun QueuePanel(audio:AudioController,onDismiss:()->Unit,onSaveQueue:((List<Deskt
         val now=rows.indexOfFirst {it is QueueRow.Label && it.id=="now"}
         if(now>0) listState.scrollToItem(now)
     }
-    LaunchedEffect(queue.keys) {selected=selected.intersect(queue.keys.toSet())}
+    LaunchedEffect(queue.keys) {
+        selected=selected.intersect(queue.keys.toSet())
+        if(dragging!=null && dragging !in queue.keys) {
+            dragging=null
+            dropTarget=null
+        }
+    }
     LaunchedEffect(dragging) {
         if(dragging!=null)while(isActive) {
             val info=listState.layoutInfo
-            val delta=when {dragCenter<info.viewportStartOffset+36 -> -12f
-                dragCenter>info.viewportEndOffset-36 -> 12f;else -> 0f}
+            val delta=when {dragCenter<info.viewportStartOffset+autoScrollEdgePx -> -autoScrollStepPx
+                dragCenter>info.viewportEndOffset-autoScrollEdgePx -> autoScrollStepPx;else -> 0f}
             if(delta!=0f){listState.scrollBy(delta);updateTarget()}
             delay(16)
         }
@@ -154,7 +169,58 @@ fun QueuePanel(audio:AudioController,onDismiss:()->Unit,onSaveQueue:((List<Deskt
             Spacer(Modifier.height(8.dp))
             if(queue.tracks.isEmpty()) Box(Modifier.fillMaxWidth().height(160.dp),contentAlignment=Alignment.Center) {
                 Text("Play a track to build the queue.",color=colors.onSurfaceVariant)
-            } else Box(Modifier.fillMaxWidth().weight(1f,fill=false)) {
+            } else Box(Modifier.fillMaxWidth().weight(1f,fill=false).pointerInput(Unit) {
+                // Hoist drag handling above LazyColumn so item recycling or translation never cancels/corrupts the gesture.
+                awaitEachGesture {
+                    val down=awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
+                    if(latestSelecting || currentEvent.buttons.isSecondaryPressed) return@awaitEachGesture
+                    if(down.position.x>dragHandleMaxX) return@awaitEachGesture
+                    val item=listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                        it.key is Long && down.position.y>=it.offset && down.position.y<=it.offset+it.size
+                    } ?: return@awaitEachGesture
+                    val key=item.key as Long
+                    val touchSlop=viewConfiguration.touchSlop
+                    val dragOffsetInItem=down.position.y-item.offset
+                    var totalDy=0f
+                    var started=false
+                    var prevY=down.position.y
+                    try {
+                        while(true) {
+                            val event=awaitPointerEvent(PointerEventPass.Initial)
+                            val change=event.changes.firstOrNull {it.id==down.id} ?: break
+                            if(!change.pressed) {
+                                if(started) {
+                                    val target=dropTarget
+                                    if(target!=null && target!=key && key in latestKeys) audio.moveQueue(key,target)
+                                }
+                                break
+                            }
+                            val dy=change.position.y-prevY
+                            prevY=change.position.y
+                            if(!started) {
+                                totalDy+=dy
+                                if(kotlin.math.abs(totalDy)>=touchSlop) {
+                                    started=true
+                                    dragging=key
+                                    dragHeight=item.size
+                                    dropTarget=key
+                                }
+                            }
+                            if(started) {
+                                change.consume()
+                                val viewportHeight=(listState.layoutInfo.viewportEndOffset-listState.layoutInfo.viewportStartOffset).toFloat()
+                                val halfHeight=dragHeight/2f
+                                val rawCenter=change.position.y-dragOffsetInItem+halfHeight
+                                dragCenter=if(viewportHeight>dragHeight) rawCenter.coerceIn(halfHeight,viewportHeight-halfHeight) else rawCenter
+                                updateTarget()
+                            }
+                        }
+                    } finally {
+                        dragging=null
+                        dropTarget=null
+                    }
+                }
+            }) {
                 LazyColumn(state=listState,modifier=Modifier.fillMaxWidth().padding(end=8.dp),
                     verticalArrangement=Arrangement.spacedBy(2.dp)) {
                     items(rows,key={row-> when(row) {
@@ -169,79 +235,186 @@ fun QueuePanel(audio:AudioController,onDismiss:()->Unit,onSaveQueue:((List<Deskt
                                 val song=queue.tracks[absolute];val key=queue.keys[absolute]
                                 val current=absolute==queue.index
                                 val played=queue.index>0 && absolute<queue.index
-                                var menu by remember(key){mutableStateOf(false)}
-                                val artists=remember(song.artist){ArtistNames.split(song.artist)}
-                                val itemColor=when {key in selected->colors.surfaceContainerHighest
-                                    current->colors.primaryContainer
-                                    key==dropTarget && dragging!=null->colors.secondaryContainer;else->Color.Transparent}
-                                Surface(shape=RoundedCornerShape(16.dp),color=itemColor,
-                                    contentColor=if(current && key !in selected)colors.onPrimaryContainer else colors.onSurface,
-                                    modifier=Modifier.fillMaxWidth().zIndex(if(dragging==key)1f else 0f).graphicsLayer {
-                                        alpha=if(dragging==key) .9f else if(played) .6f else 1f
-                                        if(dragging==key) {
-                                            val item=listState.layoutInfo.visibleItemsInfo.firstOrNull {it.key==key}
-                                            translationY=dragCenter-(item?.let {it.offset+it.size/2f} ?: dragCenter)
-                                        }
-                                    }) {
-                                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).queueContextMenu {toggle(key)}
-                                        .clickable {if(selecting) toggle(key) else audio.jumpToKey(key)}.padding(start=4.dp,end=4.dp,top=6.dp,bottom=6.dp),
-                                        verticalAlignment=Alignment.CenterVertically) {
-                                        if(selecting) Checkbox(checked=key in selected,onCheckedChange={toggle(key)},
-                                            modifier=Modifier.size(32.dp).semantics {contentDescription="Select ${song.title}"})
-                                        else Box(Modifier.size(32.dp).semantics {contentDescription="Drag ${song.title}"}.pointerInput(key) {
-                                            detectDragGestures(onDragStart={
-                                                val item=listState.layoutInfo.visibleItemsInfo.firstOrNull {it.key==key}
-                                                if(item!=null){dragging=key;dragCenter=item.offset+item.size/2f;dropTarget=key}
-                                            },onDragCancel={dragging=null;dropTarget=null},onDragEnd={
-                                                val target=dropTarget
-                                                if(target!=null && target!=key && key in latestKeys)audio.moveQueue(key,target)
-                                                dragging=null;dropTarget=null
-                                            }) {change,amount->change.consume();dragCenter+=amount.y;updateTarget()}
-                                        },contentAlignment=Alignment.Center) {
-                                            Glyph("drag",colors.onSurfaceVariant,Modifier.size(20.dp))
-                                        }
-                                        Spacer(Modifier.width(4.dp))
-                                        Artwork(44.dp,current,song.coverPath)
-                                        Spacer(Modifier.width(12.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(song.title,maxLines=1,overflow=TextOverflow.Ellipsis,
-                                                style=MaterialTheme.typography.bodyMedium.copy(fontWeight=FontWeight.SemiBold))
-                                            Text(artists.joinToString(" · ").ifBlank{"Unknown artist"},maxLines=1,overflow=TextOverflow.Ellipsis,
-                                                style=MaterialTheme.typography.labelSmall,
-                                                color=if(current)colors.onPrimaryContainer.copy(alpha=.8f) else colors.onSurfaceVariant)
-                                        }
-                                        if(current) {
-                                            Spacer(Modifier.width(8.dp))
-                                            Glyph("levels",colors.primary,Modifier.size(18.dp))
-                                        }
-                                        if(!selecting) Box {
-                                            IconButton(onClick={menu=true},modifier=Modifier.size(36.dp).semantics {contentDescription="Queue actions"}) {
-                                                Glyph("more",LocalContentColor.current,Modifier.size(20.dp))
-                                            }
-                                            DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
-                                                DropdownMenuItem(text={Text("Move up")},leadingIcon={Glyph("up",LocalContentColor.current)},
-                                                    enabled=absolute>0,onClick={menu=false;audio.moveQueueBy(key,-1)})
-                                                DropdownMenuItem(text={Text("Move down")},leadingIcon={Glyph("down",LocalContentColor.current)},
-                                                    enabled=absolute<queue.tracks.lastIndex,onClick={menu=false;audio.moveQueueBy(key,1)})
-                                                HorizontalDivider()
-                                                DropdownMenuItem(text={Text("Go to album: ${song.album.ifBlank{"Unknown album"}}",maxLines=1,overflow=TextOverflow.Ellipsis)},
-                                                    leadingIcon={Glyph("album",LocalContentColor.current)},onClick={menu=false;onOpenAlbum(song)})
-                                                artists.forEach {artist->
-                                                    DropdownMenuItem(text={Text("Go to artist: $artist",maxLines=1,overflow=TextOverflow.Ellipsis)},
-                                                        leadingIcon={Glyph("artist",LocalContentColor.current)},onClick={menu=false;onOpenArtist(artist)})
-                                                }
-                                                HorizontalDivider()
-                                                DropdownMenuItem(text={Text("Remove from queue")},leadingIcon={Glyph("remove",LocalContentColor.current)},
-                                                    onClick={menu=false;audio.removeQueue(setOf(key))})
-                                            }
-                                        }
-                                    }
-                                }
+                                QueueTrackRow(
+                                    song=song,
+                                    key=key,
+                                    absolute=absolute,
+                                    total=total,
+                                    current=current,
+                                    played=played,
+                                    selected=key in selected,
+                                    selecting=selecting,
+                                    isDropTarget=key==dropTarget && dragging!=null && dragging!=key,
+                                    isDraggingOverlay=false,
+                                    isPlaceholder=dragging==key,
+                                    colors=colors,
+                                    modifier=Modifier.fillMaxWidth(),
+                                    onToggle={toggle(key)},
+                                    onJump={audio.jumpToKey(key)},
+                                    onMoveBy={delta->audio.moveQueueBy(key,delta)},
+                                    onOpenAlbum={onOpenAlbum(song)},
+                                    onOpenArtist=onOpenArtist,
+                                    onRemove={audio.removeQueue(setOf(key))}
+                                )
                             }
                         }
                     }
                 }
+                val dragKey=dragging
+                val dragIndex=if(dragKey!=null) queue.keys.indexOf(dragKey) else -1
+                if(dragKey!=null && dragIndex in queue.tracks.indices) {
+                    val dragY=dragCenter-dragHeight/2f
+                    QueueTrackRow(
+                        song=queue.tracks[dragIndex],
+                        key=dragKey,
+                        absolute=dragIndex,
+                        total=total,
+                        current=dragIndex==queue.index,
+                        played=queue.index>0 && dragIndex<queue.index,
+                        selected=dragKey in selected,
+                        selecting=selecting,
+                        isDropTarget=false,
+                        isDraggingOverlay=true,
+                        isPlaceholder=false,
+                        colors=colors,
+                        modifier=Modifier.fillMaxWidth().padding(end=8.dp).zIndex(1f).graphicsLayer {
+                            translationY=dragY
+                            alpha=.92f
+                        },
+                        onToggle={},
+                        onJump={},
+                        onMoveBy={},
+                        onOpenAlbum={},
+                        onOpenArtist={},
+                        onRemove={}
+                    )
+                }
                 AutoHideListScrollbar(listState,Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueTrackRow(
+    song:DesktopSong,
+    key:Long,
+    absolute:Int,
+    total:Int,
+    current:Boolean,
+    played:Boolean,
+    selected:Boolean,
+    selecting:Boolean,
+    isDropTarget:Boolean,
+    isDraggingOverlay:Boolean,
+    isPlaceholder:Boolean,
+    colors:ColorScheme,
+    modifier:Modifier=Modifier,
+    onToggle:()->Unit,
+    onJump:()->Unit,
+    onMoveBy:(Int)->Unit,
+    onOpenAlbum:()->Unit,
+    onOpenArtist:(String)->Unit,
+    onRemove:()->Unit
+) {
+    var menu by remember(key) {mutableStateOf(false)}
+    val artists=remember(song.artist) {ArtistNames.split(song.artist)}
+    val itemColor=when {
+        selected -> colors.surfaceContainerHighest
+        current -> colors.primaryContainer
+        isDropTarget -> colors.secondaryContainer
+        isDraggingOverlay -> colors.surfaceContainerHigh
+        else -> Color.Transparent
+    }
+    Surface(
+        shape=RoundedCornerShape(16.dp),
+        color=itemColor,
+        shadowElevation=if(isDraggingOverlay) 6.dp else 0.dp,
+        contentColor=if(current && !selected) colors.onPrimaryContainer else colors.onSurface,
+        modifier=modifier.graphicsLayer {
+            alpha=when {
+                isPlaceholder -> 0f
+                isDraggingOverlay -> .92f
+                played -> .6f
+                else -> 1f
+            }
+        }
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).queueContextMenu(onToggle)
+                .clickable(enabled=!isDraggingOverlay) {if(selecting) onToggle() else onJump()}
+                .padding(start=4.dp,end=4.dp,top=6.dp,bottom=6.dp),
+            verticalAlignment=Alignment.CenterVertically
+        ) {
+            if(selecting) Checkbox(
+                checked=selected,
+                onCheckedChange={onToggle()},
+                modifier=Modifier.size(32.dp).semantics {contentDescription="Select ${song.title}"}
+            ) else Box(
+                Modifier.size(32.dp).semantics {contentDescription="Drag ${song.title}"},
+                contentAlignment=Alignment.Center
+            ) {
+                Glyph("drag",colors.onSurfaceVariant,Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(4.dp))
+            Artwork(44.dp,current,song.coverPath)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    song.title,
+                    maxLines=1,
+                    overflow=TextOverflow.Ellipsis,
+                    style=MaterialTheme.typography.bodyMedium.copy(fontWeight=FontWeight.SemiBold)
+                )
+                Text(
+                    artists.joinToString(" · ").ifBlank {"Unknown artist"},
+                    maxLines=1,
+                    overflow=TextOverflow.Ellipsis,
+                    style=MaterialTheme.typography.labelSmall,
+                    color=if(current) colors.onPrimaryContainer.copy(alpha=.8f) else colors.onSurfaceVariant
+                )
+            }
+            if(current) {
+                Spacer(Modifier.width(8.dp))
+                Glyph("levels",colors.primary,Modifier.size(18.dp))
+            }
+            if(!selecting && !isDraggingOverlay) Box {
+                IconButton(onClick={menu=true},modifier=Modifier.size(36.dp).semantics {contentDescription="Queue actions"}) {
+                    Glyph("more",LocalContentColor.current,Modifier.size(20.dp))
+                }
+                DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
+                    DropdownMenuItem(
+                        text={Text("Move up")},
+                        leadingIcon={Glyph("up",LocalContentColor.current)},
+                        enabled=absolute>0,
+                        onClick={menu=false;onMoveBy(-1)}
+                    )
+                    DropdownMenuItem(
+                        text={Text("Move down")},
+                        leadingIcon={Glyph("down",LocalContentColor.current)},
+                        enabled=absolute<total-1,
+                        onClick={menu=false;onMoveBy(1)}
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text={Text("Go to album: ${song.album.ifBlank {"Unknown album"}}",maxLines=1,overflow=TextOverflow.Ellipsis)},
+                        leadingIcon={Glyph("album",LocalContentColor.current)},
+                        onClick={menu=false;onOpenAlbum()}
+                    )
+                    artists.forEach {artist->
+                        DropdownMenuItem(
+                            text={Text("Go to artist: $artist",maxLines=1,overflow=TextOverflow.Ellipsis)},
+                            leadingIcon={Glyph("artist",LocalContentColor.current)},
+                            onClick={menu=false;onOpenArtist(artist)}
+                        )
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text={Text("Remove from queue")},
+                        leadingIcon={Glyph("remove",LocalContentColor.current)},
+                        onClick={menu=false;onRemove()}
+                    )
+                }
             }
         }
     }
