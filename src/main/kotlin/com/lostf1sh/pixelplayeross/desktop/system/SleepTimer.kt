@@ -51,6 +51,7 @@ class SleepTimer(
     private val _state = MutableStateFlow(SleepTimerState())
     val state: StateFlow<SleepTimerState> = _state.asStateFlow()
 
+    private val stateLock = Any()
     private var timerJob: Job? = null
     private var initialVolume: Int? = null
 
@@ -61,96 +62,126 @@ class SleepTimer(
     fun start(target: SleepTimerTarget, fadeout: Boolean = true) {
         cancel(restoreVolume = true)
 
-        val currentVol = audioTarget.volume
-        initialVolume = currentVol
+        synchronized(stateLock) {
+            initialVolume = audioTarget.volume
 
-        val totalSecs = when (target) {
-            is SleepTimerTarget.Duration -> (target.minutes * 60L).coerceAtLeast(10L)
-            SleepTimerTarget.EndOfTrack -> {
-                val duration = audioTarget.durationMs
-                val time = audioTarget.currentTimeMs
-                val remainingMs = if (duration > 1000L) (duration - time).coerceAtLeast(0L) else 0L
-                (remainingMs / 1000L).coerceAtLeast(1L)
+            val totalSecs = when (target) {
+                is SleepTimerTarget.Duration -> (target.minutes * 60L).coerceAtLeast(10L)
+                SleepTimerTarget.EndOfTrack -> {
+                    val duration = audioTarget.durationMs
+                    val time = audioTarget.currentTimeMs
+                    val remainingMs = if (duration > 1000L) (duration - time).coerceAtLeast(0L) else 0L
+                    (remainingMs / 1000L).coerceAtLeast(1L)
+                }
             }
-        }
 
-        _state.value = SleepTimerState(
-            isActive = true,
-            target = target,
-            totalSeconds = totalSecs,
-            remainingSeconds = totalSecs,
-            fadeoutEnabled = fadeout,
-            isFading = false
-        )
+            _state.value = SleepTimerState(
+                isActive = true,
+                target = target,
+                totalSeconds = totalSecs,
+                remainingSeconds = totalSecs,
+                fadeoutEnabled = fadeout,
+                isFading = false
+            )
 
-        timerJob = scope.launch {
-            when (target) {
-                is SleepTimerTarget.Duration -> runDurationTimer(totalSecs, fadeout)
-                SleepTimerTarget.EndOfTrack -> runEndOfTrackTimer(fadeout)
+            timerJob = scope.launch {
+                when (target) {
+                    is SleepTimerTarget.Duration -> runDurationTimer(fadeout)
+                    SleepTimerTarget.EndOfTrack -> runEndOfTrackTimer(fadeout)
+                }
             }
         }
     }
 
     /**
-     * Extend an active duration timer by [additionalMinutes].
+     * Extend an active timer by [additionalMinutes].
+     * If the timer was in [SleepTimerTarget.EndOfTrack] mode, switches it to a duration countdown.
      */
     fun extend(additionalMinutes: Int) {
-        val current = _state.value
-        if (!current.isActive) return
+        if (additionalMinutes <= 0) return
 
-        val addSecs = additionalMinutes * 60L
-        val newRemaining = current.remainingSeconds + addSecs
-        val newTotal = current.totalSeconds + addSecs
+        synchronized(stateLock) {
+            val current = _state.value
+            if (!current.isActive) return
 
-        // If we were fading, restore volume back to normal since we now have more time
-        if (current.isFading && newRemaining > 30) {
-            initialVolume?.let { audioTarget.setVolume(it) }
+            val addSecs = additionalMinutes * 60L
+            val newRemaining = current.remainingSeconds + addSecs
+            val newTotal = current.totalSeconds + addSecs
+
+            // If we were fading, restore volume back to normal since we now have more time
+            if (current.isFading && newRemaining > FADE_DURATION_SECONDS) {
+                initialVolume?.let { audioTarget.setVolume(it) }
+            }
+
+            val wasEndOfTrack = current.target is SleepTimerTarget.EndOfTrack
+            if (wasEndOfTrack) {
+                timerJob?.cancel()
+            }
+
+            _state.value = current.copy(
+                target = if (wasEndOfTrack) {
+                    SleepTimerTarget.Duration((newRemaining / 60L).toInt().coerceAtLeast(1))
+                } else {
+                    current.target
+                },
+                totalSeconds = newTotal,
+                remainingSeconds = newRemaining,
+                isFading = newRemaining <= FADE_DURATION_SECONDS && current.fadeoutEnabled
+            )
+
+            if (wasEndOfTrack) {
+                timerJob = scope.launch { runDurationTimer(current.fadeoutEnabled) }
+            }
         }
-
-        _state.value = current.copy(
-            totalSeconds = newTotal,
-            remainingSeconds = newRemaining,
-            isFading = newRemaining <= 30 && current.fadeoutEnabled
-        )
     }
 
     /**
      * Cancel any active sleep timer, optionally restoring original volume.
      */
     fun cancel(restoreVolume: Boolean = true) {
-        timerJob?.cancel()
-        timerJob = null
+        synchronized(stateLock) {
+            timerJob?.cancel()
+            timerJob = null
 
-        if (restoreVolume && _state.value.isFading) {
-            initialVolume?.let { audioTarget.setVolume(it) }
+            if (restoreVolume && _state.value.isFading) {
+                initialVolume?.let { audioTarget.setVolume(it) }
+            }
+            initialVolume = null
+
+            _state.value = SleepTimerState()
         }
-        initialVolume = null
-
-        _state.value = SleepTimerState()
     }
 
-    private suspend fun runDurationTimer(totalSecs: Long, fadeout: Boolean) {
-        var remaining = totalSecs
-        val fadeDuration = 30L
-
-        while (remaining > 0) {
+    private suspend fun runDurationTimer(fadeout: Boolean) {
+        while (currentCoroutineContext().isActive) {
             delay(1000L)
-            remaining -= 1
 
-            val isFading = fadeout && remaining <= fadeDuration
-            if (isFading) {
-                applyFadeVolume(remaining, fadeDuration)
-            } else {
-                initialVolume = audioTarget.volume
+            var shouldFinish = false
+            synchronized(stateLock) {
+                val current = _state.value
+                if (!current.isActive) return
+
+                val remaining = (current.remainingSeconds - 1L).coerceAtLeast(0L)
+                val isFading = fadeout && remaining <= FADE_DURATION_SECONDS
+                if (isFading) {
+                    applyFadeVolume(remaining, FADE_DURATION_SECONDS)
+                } else {
+                    initialVolume = audioTarget.volume
+                }
+
+                _state.value = current.copy(
+                    remainingSeconds = remaining,
+                    isFading = isFading
+                )
+
+                shouldFinish = remaining <= 0L
             }
 
-            _state.value = _state.value.copy(
-                remainingSeconds = remaining,
-                isFading = isFading
-            )
+            if (shouldFinish) {
+                finishTimer()
+                return
+            }
         }
-
-        finishTimer()
     }
 
     private suspend fun runEndOfTrackTimer(fadeout: Boolean) {
@@ -214,14 +245,16 @@ class SleepTimer(
     }
 
     private suspend fun finishTimer() {
-        val savedVol = initialVolume
+        val savedVol = synchronized(stateLock) { initialVolume }
         audioTarget.pause()
         delay(150L)
-        if (savedVol != null) {
-            audioTarget.setVolume(savedVol)
+        synchronized(stateLock) {
+            if (savedVol != null) {
+                audioTarget.setVolume(savedVol)
+            }
+            initialVolume = null
+            _state.value = SleepTimerState()
         }
-        initialVolume = null
-        _state.value = SleepTimerState()
     }
 
     /**
@@ -229,12 +262,16 @@ class SleepTimer(
      * so that the restored volume matches their new intended level.
      */
     fun onUserVolumeChanged(newVolume: Int) {
-        if (!_state.value.isFading) {
-            initialVolume = newVolume
+        synchronized(stateLock) {
+            if (!_state.value.isFading) {
+                initialVolume = newVolume
+            }
         }
     }
 
     companion object {
+        private const val FADE_DURATION_SECONDS = 30L
+
         fun formatRemaining(seconds: Long): String {
             if (seconds <= 0) return "0:00"
             val m = seconds / 60

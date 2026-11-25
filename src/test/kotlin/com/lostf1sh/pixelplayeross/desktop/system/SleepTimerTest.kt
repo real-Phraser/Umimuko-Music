@@ -2,6 +2,8 @@ package com.lostf1sh.pixelplayeross.desktop.system
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -164,6 +166,70 @@ class SleepTimerTest {
         timer.start(SleepTimerTarget.EndOfTrack, fadeout = false)
         // Since isPlaying is false, pause() must not have been triggered by the timer
         assertFalse(mock.paused)
+        timer.cancel()
+    }
+
+    @Test
+    fun testExtendUpdatesCountdownAndRestoresFadeout() = runBlocking {
+        val mock = MockAudioTarget(initialVolume = 80)
+        val timer = SleepTimer(audioTarget = mock)
+
+        // Duration(0) coerces to 10s, which is within the 30s fadeout window
+        timer.start(SleepTimerTarget.Duration(0), fadeout = true)
+        assertEquals(10L, timer.state.value.remainingSeconds)
+
+        // Wait for at least one tick so countdown enters fadeout
+        delay(1200L)
+        assertTrue(timer.state.value.isFading)
+        assertTrue(timer.state.value.remainingSeconds < 10L)
+        assertTrue(mock.volume < 80)
+
+        // Extend by 5 minutes (+300s): should exit fadeout, restore volume, and stay extended across ticks
+        val beforeExtend = timer.state.value.remainingSeconds
+        timer.extend(5)
+        assertEquals(beforeExtend + 300L, timer.state.value.remainingSeconds)
+        assertFalse(timer.state.value.isFading)
+        assertEquals(80, mock.volume)
+
+        delay(1200L)
+        assertTrue(timer.state.value.isActive)
+        assertTrue(timer.state.value.remainingSeconds >= beforeExtend + 298L)
+        assertFalse(timer.state.value.isFading)
+        assertEquals(80, mock.volume)
+
+        // Extend by 15 minutes (+900s) and verify countdown continues from the extended value
+        val beforeFifteen = timer.state.value.remainingSeconds
+        timer.extend(15)
+        assertEquals(beforeFifteen + 900L, timer.state.value.remainingSeconds)
+
+        delay(1200L)
+        assertTrue(timer.state.value.remainingSeconds >= beforeFifteen + 898L)
+        assertFalse(mock.paused)
+
+        timer.cancel()
+    }
+
+    @Test
+    fun testExtendEndOfTrackSwitchesToDurationCountdown() = runBlocking {
+        val mock = MockAudioTarget(
+            currentTimeMs = 120_000L,
+            durationMs = 180_000L // 60s remaining
+        )
+        val timer = SleepTimer(audioTarget = mock)
+
+        timer.start(SleepTimerTarget.EndOfTrack, fadeout = true)
+        assertEquals(SleepTimerTarget.EndOfTrack, timer.state.value.target)
+        assertEquals(60L, timer.state.value.remainingSeconds)
+
+        timer.extend(5)
+        assertTrue(timer.state.value.target is SleepTimerTarget.Duration)
+        assertEquals(360L, timer.state.value.remainingSeconds)
+
+        // Ensure runEndOfTrackTimer was cancelled and does not overwrite remainingSeconds back to 60
+        delay(1200L)
+        assertTrue(timer.state.value.isActive)
+        assertTrue(timer.state.value.remainingSeconds in 358L..359L)
+
         timer.cancel()
     }
 }
