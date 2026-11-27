@@ -74,6 +74,7 @@ fun FullPlayerScreen(
     val state by audio.state.collectAsState()
     var preview by remember(state.song?.id) { mutableStateOf<Float?>(null) }
     var showLyrics by remember { mutableStateOf(false) }
+    var showLyricCardDialog by remember(state.song?.id) { mutableStateOf(false) }
 
     // Lyrics state
     var lyrics by remember(state.song?.id) { mutableStateOf(SpicyLyrics.EMPTY) }
@@ -145,6 +146,13 @@ fun FullPlayerScreen(
                                 "lyrics",
                                 if (showLyrics) MaterialTheme.colorScheme.primary else LocalContentColor.current
                             )
+                        }
+
+                        TextButton(
+                            onClick = { showLyricCardDialog = true },
+                            enabled = state.song != null && !isLoadingLyrics && lyrics.lines.isNotEmpty()
+                        ) {
+                            Text("Lyric card")
                         }
 
                         Spacer(Modifier.width(8.dp))
@@ -297,6 +305,15 @@ fun FullPlayerScreen(
                                 colors = colors
                             )
                         }
+                    }
+                }
+                if (showLyricCardDialog) {
+                    state.song?.let { song ->
+                        LyricsCardDialog(
+                            song = song,
+                            lyrics = lyrics,
+                            onDismiss = { showLyricCardDialog = false }
+                        )
                     }
                 }
             }
